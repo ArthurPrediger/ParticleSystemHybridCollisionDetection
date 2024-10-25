@@ -1,26 +1,64 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSUpdate
 
-// Create a RenderTexture with enableRandomWrite flag and set it
-// with cs.SetTexture
 RWStructuredBuffer<float3> particlesPos;
-float aliveTime;
+RWStructuredBuffer<float3> particlesVel;
+matrix projectionMat;
+matrix viewMat;
+matrix inverseProjectionMat;
+float3 cameraPos;
+float2 screenSize;
 float deltaTime;
+
+RWTexture2D<float> depthTexture;
 
 [numthreads(1,1,1)]
 void PSUpdate (uint3 id : SV_DispatchThreadID)
 {
-    // TODO: insert actual code here!
-    float3 vel = float3(0.0, 1.0, 0.0);
-    float lifeTime = 2.0;
+    float3 particlePos =  particlesPos[id.x];
 
-    if(aliveTime < lifeTime)
+    float4 viewPos = mul(viewMat, float4(particlePos, 1.0));
+
+    float4 clipPos = mul(projectionMat, viewPos);
+
+    float3 ndcPos = clipPos.xyz / clipPos.w;
+
+    float2 screenPos;
+    screenPos.x = (ndcPos.x * 0.5 + 0.5) * screenSize.x;
+    screenPos.y = (ndcPos.y * 0.5 + 0.5) * screenSize.y;
+
+    bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
+
+    if(isInsideScreen)
     {
-        particlesPos[id.x] += vel * deltaTime;
+        float depthValue = depthTexture[uint2(screenPos)];
+
+        float4 clipSpacePos;
+        clipSpacePos.xy = (screenPos / screenSize * 2.0 - 1.0) * float2(1, -1); // NDC space
+        clipSpacePos.z = depthValue * 2.0 - 1.0;
+        clipSpacePos.w = 1.0;
+
+        float4 viewSpacePos = mul(inverseProjectionMat, clipSpacePos);
+        viewSpacePos /= viewSpacePos.w;
+
+        float3 worldSpacePos = viewSpacePos.xyz;
+        float distanceToCamera = length(worldSpacePos - cameraPos);
+
+        //float nearClip = 0.3;
+        //float farClip = 1000.0;
+        //depthValue = nearClip * farClip / (farClip - depthValue * (farClip - nearClip));
+
+        float eyeToParticleDist = length(particlePos - cameraPos);
+        float distDifference = abs(distanceToCamera - eyeToParticleDist);
+
+        if(distDifference < 0.1)
+        {
+            particlesVel[id.x] = float3(0, 8, 0);
+        }
     }
-    else
-    {
-        particlesPos[id.x] += vel * (lifeTime - (aliveTime - deltaTime));
-        particlesPos[id.x] -= vel * lifeTime;
-    }
+
+    const float gravity = -9.81;
+
+    particlesVel[id.x] += float3(0, 1, 0) * gravity * deltaTime;
+    particlesPos[id.x] += particlesVel[id.x] * deltaTime;
 }

@@ -117,7 +117,7 @@ Shader "Unlit/ParticleSys"
                 triStream.Append(o);
             }
 
-            fixed4 frag (g2f i) : SV_Target
+            fixed4 frag (v2f i) : SV_Target
             {
                 fixed4 col = float4(0.0, 0.5, 0.0, 1.0);
                 return col;

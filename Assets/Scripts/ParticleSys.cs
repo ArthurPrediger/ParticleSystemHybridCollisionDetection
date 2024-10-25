@@ -1,92 +1,113 @@
-using System.Collections;
+using Microsoft.Unity.VisualStudio.Editor;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
-using static Unity.IO.LowLevel.Unsafe.AsyncReadManagerMetrics;
-
-public struct Particle
-{
-    public Particle(Vector3 position)
-    {
-        pos = position;
-    }
-
-    public Vector3 pos;
-}
+using UnityEngine.UI;
+using static UnityEditor.PlayerSettings;
 
 public class ParticleSys : MonoBehaviour
 {
     [SerializeField]
-    private ComputeShader csUpdate;
+    private ComputeShader PartSysUpdateCS;
 
     private Material partSysMat;
 
-    private Mesh mesh;
-
-    private RenderTexture renderTexture;
-
-    private Particle[] particles;
-
     private List<Vector3> particlesPos = new List<Vector3>();
+    private List<Vector3> particlesVel = new List<Vector3>();
 
-    private HashSet<Vector3> vertices = new HashSet<Vector3>();
+    private ComputeBuffer particlesPosCB;
+    private ComputeBuffer particlesVelCB;
 
-    private ComputeBuffer particlesCB;
+    RenderTexture depthTexture;
 
-    private float aliveTime = 0.0f;
+    public RawImage depthImage;
 
     // Start is called before the first frame update
     void Start()
     {
-        mesh = GetComponent<MeshFilter>().mesh;
+        Camera.main.depthTextureMode = DepthTextureMode.Depth;
+        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
+        Bounds newBounds = new Bounds(Vector3.zero, Vector3.one * 999999f);
+        meshRenderer.localBounds = newBounds;
 
-        foreach (var pos in mesh.vertices)
+        Vector3 starPos = new(0.5f, 0f, 0.5f);
+        float offset = 1.0f;
+        for(int i = 0; i < 2; i++)
         {
-            if(vertices.Add(pos))
-                particlesPos.Add(pos);
+            for (int j = 0; j < 2; j++)
+            {
+                particlesPos.Add((starPos - new Vector3(offset * i, 0.0f, offset * j)));
+                particlesVel.Add(Vector3.zero);
+            }
         }
 
         List<int> indices = new List<int>();
-        foreach (var i in mesh.GetIndices(0))
+        for(int i = 0; i < particlesPos.Count; i++)
         {
-            indices.Add(indices.Count % particlesPos.Count);
+            indices.Add(i);
         }
 
         Mesh partMesh = new Mesh();
         partMesh.name = "Particle Mesh";
         partMesh.SetVertices(particlesPos);
-        partMesh.SetTriangles(indices, 0);
+        partMesh.SetIndices(indices, MeshTopology.Points, 0);
         GetComponent<MeshFilter>().mesh = partMesh;
 
-        particlesCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
-        particlesCB.SetData(particlesPos.ToArray());
+        particlesPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
+        particlesPosCB.SetData(particlesPos.ToArray());
 
         partSysMat = GetComponent<MeshRenderer>().material;
-        partSysMat.SetBuffer("particlesPos", particlesCB);
+        partSysMat.SetBuffer("particlesPos", particlesPosCB);
 
-        csUpdate.SetBuffer(0, "particlesPos", particlesCB);
+        PartSysUpdateCS.SetBuffer(PartSysUpdateCS.FindKernel("PSUpdate"), "particlesPos", particlesPosCB);
+
+        particlesVelCB = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
+        particlesVelCB.SetData(particlesVel.ToArray());
+
+        PartSysUpdateCS.SetBuffer(PartSysUpdateCS.FindKernel("PSUpdate"), "particlesVel", particlesVelCB);
+
+        depthTexture = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.RFloat);
+        depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
+        depthTexture.Create();
+
+        PartSysUpdateCS.SetTexture(PartSysUpdateCS.FindKernel("PSUpdate"), "depthTexture", depthTexture);
     }
 
     // Update is called once per frame
     void Update()
     {
-        aliveTime += Time.deltaTime;
-        csUpdate.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
-        csUpdate.SetFloat(Shader.PropertyToID("aliveTime"), aliveTime);
-        csUpdate.Dispatch(csUpdate.FindKernel("PSUpdate"), particlesPos.Count, 1, 1);
+        DepthPrePass();
 
-        if (aliveTime > 2.0f) aliveTime = 0.0f;
+        depthImage.texture = depthTexture;
+
+        PartSysUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
+
+        PartSysUpdateCS.SetMatrix("projectionMat", Camera.main.projectionMatrix);
+        PartSysUpdateCS.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
+        PartSysUpdateCS.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
+        PartSysUpdateCS.SetVector("cameraPos", Camera.main.transform.position);
+
+        Vector2 screenRes = new(Screen.width, Screen.height);
+        PartSysUpdateCS.SetVector("screenSize", screenRes);
+
+        PartSysUpdateCS.Dispatch(PartSysUpdateCS.FindKernel("PSUpdate"), particlesPos.Count, 1, 1);
     }
 
     void OnDestroy()
     {
-        if (particlesCB != null)
-        {
-            particlesCB.Release();
-        }
+        particlesPosCB?.Release();
+        particlesVelCB?.Release();
     }
 
-    void OnRenderObject()
+    void DepthPrePass()
     {
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null)
+        {
+            mainCamera.targetTexture = depthTexture;
+
+            mainCamera.RenderWithShader(Shader.Find("Custom/DepthPrePass"), null);
+
+            mainCamera.targetTexture = null;
+        }
     }
 }
