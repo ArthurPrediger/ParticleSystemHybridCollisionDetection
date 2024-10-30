@@ -31,27 +31,12 @@ void PSUpdate (uint3 id : SV_DispatchThreadID)
 
     if(isInsideScreen)
     {
-        float depthValue = depthTexture[uint2(screenPos)];
-
-        float4 clipSpacePos;
-        clipSpacePos.xy = (screenPos / screenSize * 2.0 - 1.0) * float2(1, -1); // NDC space
-        clipSpacePos.z = depthValue * 2.0 - 1.0;
-        clipSpacePos.w = 1.0;
-
-        float4 viewSpacePos = mul(inverseProjectionMat, clipSpacePos);
-        viewSpacePos /= viewSpacePos.w;
-
-        float3 worldSpacePos = viewSpacePos.xyz;
-        float distanceToCamera = length(worldSpacePos - cameraPos);
-
-        //float nearClip = 0.3;
-        //float farClip = 1000.0;
-        //depthValue = nearClip * farClip / (farClip - depthValue * (farClip - nearClip));
+        float depth = depthTexture.Load(int3(int2(screenPos), 0));
 
         float eyeToParticleDist = length(particlePos - cameraPos);
-        float distDifference = abs(distanceToCamera - eyeToParticleDist);
+        float distDifference = abs(depth - eyeToParticleDist);
 
-        if(distDifference < 0.1)
+        if(distDifference <= 0.2)
         {
             particlesVel[id.x] = float3(0, 8, 0);
         }

@@ -1,3 +1,5 @@
+// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+
 Shader "Custom/DepthPrePass"
 {
     SubShader
@@ -19,21 +21,23 @@ Shader "Custom/DepthPrePass"
             struct v2f
             {
                 float4 pos : SV_POSITION;
-                float depth : TEXCOORD0;
+                float3 worldPos : TEXCOORD0;
             };
 
             v2f vert(appdata v)
             {
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
-                o.depth = o.pos.z / o.pos.w;
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 return o;
             }
 
             float frag(v2f i) : SV_Target
             {
-                // Output the depth
-                return i.depth;
+                float3 cameraPos = _WorldSpaceCameraPos;
+                float depth = length(i.worldPos - cameraPos);
+
+                return depth;
             }
             ENDCG
         }

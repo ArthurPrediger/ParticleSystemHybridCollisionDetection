@@ -29,11 +29,11 @@ public class ParticleSys : MonoBehaviour
         Bounds newBounds = new Bounds(Vector3.zero, Vector3.one * 999999f);
         meshRenderer.localBounds = newBounds;
 
-        Vector3 starPos = new(0.5f, 0f, 0.5f);
+        Vector3 starPos = new(1.5f, 0f, 1.5f);
         float offset = 1.0f;
-        for(int i = 0; i < 2; i++)
+        for(int i = 0; i < 4; i++)
         {
-            for (int j = 0; j < 2; j++)
+            for (int j = 0; j < 4; j++)
             {
                 particlesPos.Add((starPos - new Vector3(offset * i, 0.0f, offset * j)));
                 particlesVel.Add(Vector3.zero);
@@ -52,6 +52,11 @@ public class ParticleSys : MonoBehaviour
         partMesh.SetIndices(indices, MeshTopology.Points, 0);
         GetComponent<MeshFilter>().mesh = partMesh;
 
+        for (int i = 0; i < particlesPos.Count; i++)
+        {
+            particlesPos[i] = transform.localToWorldMatrix.MultiplyPoint3x4(particlesPos[i]);
+        }
+
         particlesPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
         particlesPosCB.SetData(particlesPos.ToArray());
 
@@ -65,7 +70,7 @@ public class ParticleSys : MonoBehaviour
 
         PartSysUpdateCS.SetBuffer(PartSysUpdateCS.FindKernel("PSUpdate"), "particlesVel", particlesVelCB);
 
-        depthTexture = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.RFloat);
+        depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         depthTexture.Create();
 
@@ -75,7 +80,10 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
+        meshRenderer.enabled = false;
         DepthPrePass();
+        meshRenderer.enabled = true;
 
         depthImage.texture = depthTexture;
 
@@ -96,6 +104,7 @@ public class ParticleSys : MonoBehaviour
     {
         particlesPosCB?.Release();
         particlesVelCB?.Release();
+        depthTexture.Release();
     }
 
     void DepthPrePass()

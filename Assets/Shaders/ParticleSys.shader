@@ -57,7 +57,7 @@ Shader "Unlit/ParticleSys"
 
                 //o.pos = UnityObjectToClipPos(float4(particlesPos[v.vertexID], 1.0));
                 //o.worldPos = mul(unity_ObjectToWorld, float4(particlesPos[v.vertexID], 1.0)).xyz;
-                o.pos = mul(unity_ObjectToWorld, float4(particlesPos[v.vertexID], 1.0));
+                o.pos = float4(particlesPos[v.vertexID], 1.0);
 
                 return o;
             }
