@@ -18,6 +18,7 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer particlesVelCB;
 
     RenderTexture depthTexture;
+    RenderTexture normalTexture;
 
     public RawImage depthImage;
 
@@ -75,6 +76,12 @@ public class ParticleSys : MonoBehaviour
         depthTexture.Create();
 
         PartSysUpdateCS.SetTexture(PartSysUpdateCS.FindKernel("PSUpdate"), "depthTexture", depthTexture);
+
+        normalTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.ARGBFloat);
+        normalTexture.enableRandomWrite = true;  // Enable random write for compute shader access
+        normalTexture.Create();
+
+        PartSysUpdateCS.SetTexture(PartSysUpdateCS.FindKernel("PSUpdate"), "normalTexture", normalTexture);
     }
 
     // Update is called once per frame
@@ -83,9 +90,8 @@ public class ParticleSys : MonoBehaviour
         MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
         meshRenderer.enabled = false;
         DepthPrePass();
+        NormalPrePass();
         meshRenderer.enabled = true;
-
-        depthImage.texture = depthTexture;
 
         PartSysUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
 
@@ -115,6 +121,19 @@ public class ParticleSys : MonoBehaviour
             mainCamera.targetTexture = depthTexture;
 
             mainCamera.RenderWithShader(Shader.Find("Custom/DepthPrePass"), null);
+
+            mainCamera.targetTexture = null;
+        }
+    }
+
+    void NormalPrePass()
+    {
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null)
+        {
+            mainCamera.targetTexture = normalTexture;
+
+            mainCamera.RenderWithShader(Shader.Find("Custom/NormalPrePass"), null);
 
             mainCamera.targetTexture = null;
         }
