@@ -1,20 +1,20 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel PSUpdate
+#pragma kernel PSScreenSpaceCollisionDetection
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
+AppendStructuredBuffer<int> particlesWithoutCollision;
 matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;
 float3 cameraPos;
 float2 screenSize;
-float deltaTime;
 
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
 
 [numthreads(1,1,1)]
-void PSUpdate (uint3 id : SV_DispatchThreadID)
+void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 {
     float3 particlePos = particlesPos[id.x];
 
@@ -39,12 +39,12 @@ void PSUpdate (uint3 id : SV_DispatchThreadID)
 
         if(distDifference <= 0.2)
         {
+            //particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 8;
             particlesVel[id.x] = normalTexture.Load(int2(screenPos)).xyz * 8;
         }
     }
-
-    const float gravity = -9.81;
-
-    particlesVel[id.x] += float3(0, 1, 0) * gravity * deltaTime;
-    particlesPos[id.x] += particlesVel[id.x] * deltaTime;
+    else
+    {
+        //particlesWithoutCollision.Append(id.x);
+    }
 }

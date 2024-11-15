@@ -1,21 +1,30 @@
-using Microsoft.Unity.VisualStudio.Editor;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using static UnityEditor.PlayerSettings;
 
 public class ParticleSys : MonoBehaviour
 {
     [SerializeField]
-    private ComputeShader PartSysUpdateCS;
+    private ComputeShader PSReactionUpdateCS;
+    private int kernelIDReacUpdate;
+    [SerializeField]
+    private ComputeShader PScreenSpaceCollisionDetectionCS;
+    private int kernelIDSSColDetc;
 
     private Material partSysMat;
 
-    private List<Vector3> particlesPos = new List<Vector3>();
-    private List<Vector3> particlesVel = new List<Vector3>();
+    private List<Vector3> particlesPos = new();
+    private List<Vector3> particlesVel = new();
+    //private List<float> particlesAliveTime = new();
+    //private List<float> particlesLifeSpan = new();
 
     private ComputeBuffer particlesPosCB;
     private ComputeBuffer particlesVelCB;
+    private ComputeBuffer particlesWithoutCollisionCB;
+    //private ComputeBuffer particlesInitPosCB;
+    //private ComputeBuffer particlesAliveTimeCB;
+    //private ComputeBuffer particlesLifeSpanCB;
 
     RenderTexture depthTexture;
     RenderTexture normalTexture;
@@ -58,30 +67,35 @@ public class ParticleSys : MonoBehaviour
             particlesPos[i] = transform.localToWorldMatrix.MultiplyPoint3x4(particlesPos[i]);
         }
 
+        kernelIDReacUpdate = PSReactionUpdateCS.FindKernel("PSReactionUpdate");
+        kernelIDSSColDetc = PScreenSpaceCollisionDetectionCS.FindKernel("PSScreenSpaceCollisionDetection");
+
         particlesPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
         particlesPosCB.SetData(particlesPos.ToArray());
 
         partSysMat = GetComponent<MeshRenderer>().material;
         partSysMat.SetBuffer("particlesPos", particlesPosCB);
 
-        PartSysUpdateCS.SetBuffer(PartSysUpdateCS.FindKernel("PSUpdate"), "particlesPos", particlesPosCB);
+        PSReactionUpdateCS.SetBuffer(kernelIDReacUpdate, "particlesPos", particlesPosCB);
+        PScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDSSColDetc, "particlesPos", particlesPosCB);
 
         particlesVelCB = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
         particlesVelCB.SetData(particlesVel.ToArray());
 
-        PartSysUpdateCS.SetBuffer(PartSysUpdateCS.FindKernel("PSUpdate"), "particlesVel", particlesVelCB);
+        PSReactionUpdateCS.SetBuffer(kernelIDReacUpdate, "particlesVel", particlesVelCB);
+        PScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDSSColDetc, "particlesVel", particlesVelCB);
 
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         depthTexture.Create();
 
-        PartSysUpdateCS.SetTexture(PartSysUpdateCS.FindKernel("PSUpdate"), "depthTexture", depthTexture);
+        PScreenSpaceCollisionDetectionCS.SetTexture(kernelIDSSColDetc, "depthTexture", depthTexture);
 
         normalTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.ARGBFloat);
         normalTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         normalTexture.Create();
 
-        PartSysUpdateCS.SetTexture(PartSysUpdateCS.FindKernel("PSUpdate"), "normalTexture", normalTexture);
+        PScreenSpaceCollisionDetectionCS.SetTexture(kernelIDSSColDetc, "normalTexture", normalTexture);
     }
 
     // Update is called once per frame
@@ -93,17 +107,18 @@ public class ParticleSys : MonoBehaviour
         NormalPrePass();
         meshRenderer.enabled = true;
 
-        PartSysUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
-
-        PartSysUpdateCS.SetMatrix("projectionMat", Camera.main.projectionMatrix);
-        PartSysUpdateCS.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
-        PartSysUpdateCS.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
-        PartSysUpdateCS.SetVector("cameraPos", Camera.main.transform.position);
+        PScreenSpaceCollisionDetectionCS.SetMatrix("projectionMat", Camera.main.projectionMatrix);
+        PScreenSpaceCollisionDetectionCS.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
+        PScreenSpaceCollisionDetectionCS.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
+        PScreenSpaceCollisionDetectionCS.SetVector("cameraPos", Camera.main.transform.position);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
-        PartSysUpdateCS.SetVector("screenSize", screenRes);
+        PScreenSpaceCollisionDetectionCS.SetVector("screenSize", screenRes);
 
-        PartSysUpdateCS.Dispatch(PartSysUpdateCS.FindKernel("PSUpdate"), particlesPos.Count, 1, 1);
+        PScreenSpaceCollisionDetectionCS.Dispatch(kernelIDSSColDetc, particlesPos.Count, 1, 1);
+
+        PSReactionUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
+        PSReactionUpdateCS.Dispatch(kernelIDReacUpdate, particlesPos.Count, 1, 1);
     }
 
     void OnDestroy()
@@ -111,6 +126,7 @@ public class ParticleSys : MonoBehaviour
         particlesPosCB?.Release();
         particlesVelCB?.Release();
         depthTexture.Release();
+        normalTexture.Release();
     }
 
     void DepthPrePass()

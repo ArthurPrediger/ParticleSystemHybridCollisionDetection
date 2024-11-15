@@ -1,0 +1,23 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel PSReactionUpdate
+
+RWStructuredBuffer<float3> particlesPos;
+RWStructuredBuffer<float3> particlesVel;
+//RWStructuredBuffer<float> particlesAliveTime;
+//RWStructuredBuffer<float> particlesLifeSpan;
+float deltaTime;
+
+[numthreads(1,1,1)]
+void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
+{
+    const float gravity = -9.81;
+
+    particlesVel[id.x] += float3(0, 1, 0) * gravity * deltaTime;
+    particlesPos[id.x] += particlesVel[id.x] * deltaTime;
+
+    //particlesAliveTime[id.x] += deltaTime;
+    //if(particlesAliveTime[id.x] > particlesLifeSpan[id.x])
+    //{
+    //    deadParticles.Append(id.x);
+    //}
+}
