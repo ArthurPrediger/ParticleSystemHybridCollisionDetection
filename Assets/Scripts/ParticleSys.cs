@@ -12,6 +12,12 @@ public class ParticleSys : MonoBehaviour
     private ComputeShader PScreenSpaceCollisionDetectionCS;
     private int kernelIDSSColDetc;
 
+    [SerializeField]
+    private Material instancedParticlesMat;
+    [SerializeField]
+    private Mesh particleMesh;
+    private float particleRadius = 0.4f;
+
     private Material partSysMat;
 
     private List<Vector3> particlesPos = new();
@@ -29,17 +35,19 @@ public class ParticleSys : MonoBehaviour
     RenderTexture depthTexture;
     RenderTexture normalTexture;
 
-    public RawImage depthImage;
+    public RawImage textureImage;
+
+    private float timerResetParticlesPos = 0f; 
 
     // Start is called before the first frame update
     void Start()
     {
+        instancedParticlesMat.enableInstancing = true;
         Camera.main.depthTextureMode = DepthTextureMode.Depth;
         MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
-        Bounds newBounds = new Bounds(Vector3.zero, Vector3.one * 999999f);
-        meshRenderer.localBounds = newBounds;
+        meshRenderer.enabled = false;
 
-        Vector3 starPos = new(1.5f, 0f, 1.5f);
+        Vector3 starPos = new Vector3(1.5f, 0f, 1.5f) + transform.position;
         float offset = 1.0f;
         for(int i = 0; i < 4; i++)
         {
@@ -50,32 +58,13 @@ public class ParticleSys : MonoBehaviour
             }
         }
 
-        List<int> indices = new List<int>();
-        for(int i = 0; i < particlesPos.Count; i++)
-        {
-            indices.Add(i);
-        }
-
-        Mesh partMesh = new Mesh();
-        partMesh.name = "Particle Mesh";
-        partMesh.SetVertices(particlesPos);
-        partMesh.SetIndices(indices, MeshTopology.Points, 0);
-        GetComponent<MeshFilter>().mesh = partMesh;
-
-        for (int i = 0; i < particlesPos.Count; i++)
-        {
-            particlesPos[i] = transform.localToWorldMatrix.MultiplyPoint3x4(particlesPos[i]);
-        }
-
         kernelIDReacUpdate = PSReactionUpdateCS.FindKernel("PSReactionUpdate");
         kernelIDSSColDetc = PScreenSpaceCollisionDetectionCS.FindKernel("PSScreenSpaceCollisionDetection");
 
         particlesPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
         particlesPosCB.SetData(particlesPos.ToArray());
 
-        partSysMat = GetComponent<MeshRenderer>().material;
-        partSysMat.SetBuffer("particlesPos", particlesPosCB);
-
+        instancedParticlesMat.SetBuffer("particlesPos", particlesPosCB);
         PSReactionUpdateCS.SetBuffer(kernelIDReacUpdate, "particlesPos", particlesPosCB);
         PScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDSSColDetc, "particlesPos", particlesPosCB);
 
@@ -101,24 +90,38 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
-        meshRenderer.enabled = false;
         DepthPrePass();
         NormalPrePass();
-        meshRenderer.enabled = true;
+        textureImage.texture = depthTexture;
 
         PScreenSpaceCollisionDetectionCS.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         PScreenSpaceCollisionDetectionCS.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
         PScreenSpaceCollisionDetectionCS.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
         PScreenSpaceCollisionDetectionCS.SetVector("cameraPos", Camera.main.transform.position);
+        PScreenSpaceCollisionDetectionCS.SetFloat("particleRadius", particleRadius);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
         PScreenSpaceCollisionDetectionCS.SetVector("screenSize", screenRes);
 
-        PScreenSpaceCollisionDetectionCS.Dispatch(kernelIDSSColDetc, particlesPos.Count, 1, 1);
+        PScreenSpaceCollisionDetectionCS.Dispatch(kernelIDSSColDetc, 1/*particlesPos.Count*/, 1, 1);
 
         PSReactionUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
-        PSReactionUpdateCS.Dispatch(kernelIDReacUpdate, particlesPos.Count, 1, 1);
+        PSReactionUpdateCS.Dispatch(kernelIDReacUpdate, 1/*particlesPos.Count*/, 1, 1);
+
+        RenderParams rp = new RenderParams(instancedParticlesMat);
+
+        Matrix4x4[] instData = new Matrix4x4[particlesPos.Count];
+        for (int i = 0; i < particlesPos.Count; ++i)
+            instData[i] = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, particleRadius * 2f * Vector3.one);
+
+        Graphics.RenderMeshInstanced(rp, particleMesh, 0, instData);
+
+        timerResetParticlesPos += Time.deltaTime;
+        if (timerResetParticlesPos > 4f)
+        {
+            particlesPosCB.SetData(particlesPos.ToArray());
+            timerResetParticlesPos = 0;
+        }
     }
 
     void OnDestroy()

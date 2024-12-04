@@ -9,11 +9,12 @@ matrix viewMat;
 matrix inverseProjectionMat;
 float3 cameraPos;
 float2 screenSize;
+float particleRadius;
 
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
 
-[numthreads(1,1,1)]
+[numthreads(16,1,1)]
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 {
     float3 particlePos = particlesPos[id.x];
@@ -37,10 +38,10 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
         float eyeToParticleDist = length(particlePos - cameraPos);
         float distDifference = abs(depth - eyeToParticleDist);
 
-        if(distDifference <= 0.2)
+        if(distDifference <= particleRadius)
         {
             //particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 8;
-            particlesVel[id.x] = normalTexture.Load(int2(screenPos)).xyz * 8;
+            particlesVel[id.x] = normalTexture.Load(int2(screenPos)).xyz * 6;
         }
     }
     else
