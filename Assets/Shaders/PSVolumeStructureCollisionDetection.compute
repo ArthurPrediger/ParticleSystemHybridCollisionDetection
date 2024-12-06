@@ -1,0 +1,13 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel PSVolumeStructureCollisionDetection
+
+RWStructuredBuffer<float3> particlesPos;
+RWStructuredBuffer<float3> particlesVel;
+ConsumeStructuredBuffer<int> particlesWithoutCollision;
+float particleRadius;
+
+[numthreads(16,1,1)]
+void PSVolumeStructureCollisionDetection (uint3 id : SV_DispatchThreadID)
+{
+
+}
