@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -102,6 +104,8 @@ public class ParticleSys : MonoBehaviour
         normalTexture.Create();
 
         PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "normalTexture", normalTexture);
+
+        MortonCodesBVHConstruction();
     }
 
     // Update is called once per frame
@@ -153,6 +157,7 @@ public class ParticleSys : MonoBehaviour
     {
         particlesPosCB?.Release();
         particlesVelCB?.Release();
+        particlesWithoutCollisionCB?.Release();
         depthTexture.Release();
         normalTexture.Release();
     }
@@ -180,6 +185,94 @@ public class ParticleSys : MonoBehaviour
             mainCamera.RenderWithShader(Shader.Find("Custom/NormalPrePass"), null);
 
             mainCamera.targetTexture = null;
+        }
+    }
+
+    private class BoundingBox
+    {
+        public Vector3 min = Vector3.positiveInfinity;
+        public Vector3 max = Vector3.negativeInfinity;
+        public Vector3 center = Vector3.zero;
+
+        public void ScaleToInclude(Vector3 point)
+        {
+            min = Vector3.Min(min, point);
+            max = Vector3.Max(max, point);
+        }
+
+        public void ScaleToInclude(List<Vector3> triangle)
+        {
+            foreach (Vector3 vertex in triangle)
+            {
+                ScaleToInclude(vertex);
+            }
+        }
+    } 
+
+    void MortonCodesBVHConstruction()
+    {
+        BoundingBox box = new BoundingBox();
+        List<Vector3> triangles = new List<Vector3>();
+
+        // Find all GameObjects in the scene
+        List<GameObject> allObjects = FindObjectsOfType<GameObject>().ToList();
+        // Iterate through each GameObject and get its MeshFilter component
+        foreach (GameObject obj in allObjects)
+        {
+            if (obj.TryGetComponent(out MeshFilter meshFilter))
+            {
+                Mesh mesh = meshFilter.sharedMesh;
+                foreach (int i in mesh.triangles)
+                {
+                    Vector3 vertex = obj.transform.TransformPoint(mesh.vertices[i]);
+                    triangles.Add(vertex);
+                    box.ScaleToInclude(vertex);
+                }
+            }
+        }
+
+        box.center = (box.max + box.min) * 0.5f;
+        Vector3 boxLength = (box.max - box.min);
+
+        Debug.Log("Number of triangles: " +  triangles.Count / 3f);
+
+        List<int> mortonCodes = new List<int>(triangles.Count / 3);
+
+        int gridSize = 10;
+        Vector3 gridUnitLength = boxLength / gridSize;
+        float oneThird = 1f / 3f;
+        for (int i = 0; i < triangles.Count; i += 3)
+        {
+            Vector3 barycenter = (triangles[i] + triangles[i+1] + triangles[i+2]) * oneThird;
+            Vector3 boxCoord = (barycenter - box.min);
+
+            int xCoord = (int)Mathf.Floor(boxCoord.x / gridUnitLength.x);
+            int yCoord = (int)Mathf.Floor(boxCoord.y / gridUnitLength.y) << 1;
+            int zCoord = (int)Mathf.Floor(boxCoord.z / gridUnitLength.z) << 2;
+
+            if(xCoord == 9 &&  yCoord == 9 && zCoord == 9)
+            {
+                zCoord = 9;
+            }
+
+            int mortonCode = 0;
+            int mask = 0x00000001;
+
+            int shiftAmount = 0;
+            for(int j = 0; j < gridSize; j++)
+            {
+                mortonCode |= (mask & xCoord) << shiftAmount;
+                mortonCode |= (mask & yCoord) << shiftAmount++;
+                mortonCode |= (mask & zCoord) << shiftAmount++;
+                mask <<= 1;
+            }
+
+            mortonCodes.Add(mortonCode);
+        }
+
+        for (int i = 0; i < 2; i++)
+        {
+            Debug.Log(mortonCodes[i]);
         }
     }
 }
