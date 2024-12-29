@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.UIElements;
 
 public class ParticleSys : MonoBehaviour
 {
@@ -149,6 +150,7 @@ public class ParticleSys : MonoBehaviour
         if (timerResetParticlesPos > 4f)
         {
             particlesPosCB.SetData(particlesPos.ToArray());
+            particlesVelCB.SetData(particlesVel.ToArray());
             timerResetParticlesPos = 0;
         }
     }
@@ -193,11 +195,12 @@ public class ParticleSys : MonoBehaviour
         public Vector3 min = Vector3.positiveInfinity;
         public Vector3 max = Vector3.negativeInfinity;
         public Vector3 center = Vector3.zero;
+        public Vector3 length = Vector3.zero;
 
         public void ScaleToInclude(Vector3 point)
         {
-            min = Vector3.Min(min, point);
-            max = Vector3.Max(max, point);
+            min = Vector3.Min(min, point - Vector3.one * 0.01f);
+            max = Vector3.Max(max, point + Vector3.one * 0.01f);
         }
 
         public void ScaleToInclude(List<Vector3> triangle)
@@ -207,72 +210,90 @@ public class ParticleSys : MonoBehaviour
                 ScaleToInclude(vertex);
             }
         }
-    } 
+
+        public static int TriangleMortonCode(List<Vector3> triangle, BoundingBox box)
+        {
+            if(triangle.Count != 3) return 0;
+
+            const int gridSize = 1024;
+            Vector3 gridUnitLength = box.length / gridSize;
+            const float oneThird = 1f / 3f;
+
+            Vector3 barycenter = (triangle[0] + triangle[1] + triangle[2]) * oneThird;
+            Vector3 boxCoord = (barycenter - box.min);
+
+            int xCoord = (int)Mathf.Floor(boxCoord.x / gridUnitLength.x);
+            int yCoord = (int)Mathf.Floor(boxCoord.y / gridUnitLength.y);
+            int zCoord = (int)Mathf.Floor(boxCoord.z / gridUnitLength.z);
+
+            int mortonCode = 0;
+            int mask = 0x00000001;
+            int shiftAmount = 0;
+            for (int j = 0; j < sizeof(int) * 8; j++)
+            {
+                mortonCode |= ((mask & xCoord) >> j) << shiftAmount++;
+                mortonCode |= ((mask & yCoord) >> j) << shiftAmount++;
+                mortonCode |= ((mask & zCoord) >> j) << shiftAmount++;
+                mask <<= 1;
+            }
+
+            return mortonCode;
+        }
+    }
+
+    class BVHTriangle : IComparable<BVHTriangle>
+    {
+        public Vector3[] vertices = new Vector3[3];
+        public int mortonCode = 0;
+
+        public int CompareTo(BVHTriangle other)
+        {
+            if(other == null) return 1;
+
+            return mortonCode.CompareTo(other.mortonCode);
+        }
+    }
 
     void MortonCodesBVHConstruction()
     {
         BoundingBox box = new BoundingBox();
-        List<Vector3> triangles = new List<Vector3>();
+        List<BVHTriangle> triangles = new List<BVHTriangle>();
 
         // Find all GameObjects in the scene
         List<GameObject> allObjects = FindObjectsOfType<GameObject>().ToList();
+        
         // Iterate through each GameObject and get its MeshFilter component
         foreach (GameObject obj in allObjects)
         {
             if (obj.TryGetComponent(out MeshFilter meshFilter))
             {
                 Mesh mesh = meshFilter.sharedMesh;
+                int vertexIndex = 3;
                 foreach (int i in mesh.triangles)
                 {
                     Vector3 vertex = obj.transform.TransformPoint(mesh.vertices[i]);
-                    triangles.Add(vertex);
                     box.ScaleToInclude(vertex);
+
+                    if (vertexIndex >= 3)
+                    {
+                        triangles.Add(new BVHTriangle());
+                        vertexIndex = 0;
+                    }
+                    triangles.Last().vertices[vertexIndex++] = vertex;
                 }
             }
         }
 
         box.center = (box.max + box.min) * 0.5f;
-        Vector3 boxLength = (box.max - box.min);
+        box.length = (box.max - box.min);
 
-        Debug.Log("Number of triangles: " +  triangles.Count / 3f);
+        Debug.Log("Number of triangles: " +  triangles.Count);
 
-        List<int> mortonCodes = new List<int>(triangles.Count / 3);
-
-        int gridSize = 10;
-        Vector3 gridUnitLength = boxLength / gridSize;
-        float oneThird = 1f / 3f;
-        for (int i = 0; i < triangles.Count; i += 3)
+        foreach(BVHTriangle tri in triangles)
         {
-            Vector3 barycenter = (triangles[i] + triangles[i+1] + triangles[i+2]) * oneThird;
-            Vector3 boxCoord = (barycenter - box.min);
-
-            int xCoord = (int)Mathf.Floor(boxCoord.x / gridUnitLength.x);
-            int yCoord = (int)Mathf.Floor(boxCoord.y / gridUnitLength.y) << 1;
-            int zCoord = (int)Mathf.Floor(boxCoord.z / gridUnitLength.z) << 2;
-
-            if(xCoord == 9 &&  yCoord == 9 && zCoord == 9)
-            {
-                zCoord = 9;
-            }
-
-            int mortonCode = 0;
-            int mask = 0x00000001;
-
-            int shiftAmount = 0;
-            for(int j = 0; j < gridSize; j++)
-            {
-                mortonCode |= (mask & xCoord) << shiftAmount;
-                mortonCode |= (mask & yCoord) << shiftAmount++;
-                mortonCode |= (mask & zCoord) << shiftAmount++;
-                mask <<= 1;
-            }
-
-            mortonCodes.Add(mortonCode);
+            tri.mortonCode = BoundingBox.TriangleMortonCode(tri.vertices.ToList(), box);
         }
 
-        for (int i = 0; i < 2; i++)
-        {
-            Debug.Log(mortonCodes[i]);
-        }
+        triangles.Sort();
     }
 }
