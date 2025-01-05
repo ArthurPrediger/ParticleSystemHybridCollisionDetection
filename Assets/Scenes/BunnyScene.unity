@@ -803,6 +803,7 @@ MonoBehaviour:
   instancedParticlesMat: {fileID: 2100000, guid: 89bf4ae66bc8c514f9fac6aafc8583cd, type: 2}
   particleMesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
   textureImage: {fileID: 780729455}
+  sphericalNodePrefab: {fileID: 5209843910144339430, guid: efb45e3b99903f041a4a3e4f40865e55, type: 3}
 --- !u!23 &888686343
 MeshRenderer:
   m_ObjectHideFlags: 0
