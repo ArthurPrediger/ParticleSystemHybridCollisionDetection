@@ -45,8 +45,11 @@ public class ParticleSys : MonoBehaviour
 
     private float timerResetParticlesPos = 0f;
 
+    private List<BVHTriangle> triangles = new List<BVHTriangle>();
+
     private List<BVHNode> BVH = new List<BVHNode>();
-    private readonly int BVHLevels = 4;
+    private readonly int BVHLevels = 5;
+
     [SerializeField]
     private GameObject sphericalNodePrefab;
     private List<GameObject> SphericalBVHNodes = new List<GameObject>();
@@ -280,47 +283,6 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    private static void RadixSort(List<BVHTriangle> triangles)
-    {
-        int max = GetMaxValue(triangles);
-        int numberOfBits = Mathf.FloorToInt(Mathf.Log(max, 2)) + 1;
-
-        for (int bit = 0; bit < numberOfBits; bit++)
-        {
-            List<BVHTriangle> zeroBucket = new List<BVHTriangle>();
-            List<BVHTriangle> oneBucket = new List<BVHTriangle>();
-
-            foreach (BVHTriangle t in triangles)
-            {
-                if ((t.mortonCode & (1 << bit)) == 0)
-                {
-                    zeroBucket.Add(t);
-                }
-                else
-                {
-                    oneBucket.Add(t);
-                }
-            }
-
-            triangles.Clear();
-            triangles.AddRange(zeroBucket);
-            triangles.AddRange(oneBucket);
-        }
-    }
-
-    private static int GetMaxValue(List<BVHTriangle> triangles)
-    {
-        int max = triangles[0].mortonCode;
-        foreach (BVHTriangle t in triangles)
-        {
-            if (t.mortonCode > max)
-            {
-                max = t.mortonCode;
-            }
-        }
-        return max;
-    }
-
     class BVHNode
     {
         public Vector3 center;
@@ -329,12 +291,34 @@ public class ParticleSys : MonoBehaviour
         // is the index to the first triangle of the scence's triangle list,
         // otherwise the two elements are indices to child nodes
         public int[] childrenORindex = new int[2];
+
+        public static BVHNode CreateNodeFromTriangles(List<BVHTriangle> triangles)
+        {
+            int vertexCount = 0;
+
+            Vector3 min = Vector3.positiveInfinity;
+            Vector3 max = Vector3.negativeInfinity;
+            foreach (BVHTriangle tri in triangles)
+            {
+                for (int v = 0; v < 3; v++, vertexCount++)
+                {
+                    Vector3 point = tri.vertices[v];
+                    min = Vector3.Min(min, point - Vector3.one * 0.01f);
+                    max = Vector3.Max(max, point + Vector3.one * 0.01f);
+                }
+            }
+
+            BVHNode node = new BVHNode();
+            node.center = (min + max) / 2f;
+            node.radius = Vector3.Distance(max, min) / 2f;
+
+            return node;
+        }
     }
 
     void MortonCodesBVHConstruction()
     {
         BoundingBox box = new BoundingBox();
-        List<BVHTriangle> triangles = new List<BVHTriangle>();
 
         // Find all GameObjects in the scene
         List<GameObject> allObjects = FindObjectsOfType<GameObject>().ToList();
@@ -371,39 +355,33 @@ public class ParticleSys : MonoBehaviour
             tri.mortonCode = BoundingBox.TriangleMortonCode(tri.vertices.ToList(), box);
         }
 
-        RadixSort(triangles);
+        triangles.Sort();
 
-        int subdivisions = 1;
+        List<int> cutValues = new(){ 1 << 30 };
 
-        for (int i = 0; i < BVHLevels; i++)
+        for (int numLevels = 0; numLevels < BVHLevels; numLevels++)
         {
-            int chunkSize = (int)Mathf.Ceil((float)triangles.Count / subdivisions);
-
-            for (int subdiv = 0; subdiv < subdivisions; subdiv++)
+            for (int i = 0; i < Mathf.Pow(2, numLevels); i++)
             {
-                int vertexCount = 0;
-
-                int startTriangle = subdiv * chunkSize;
-                int endTriangle = Mathf.Min(startTriangle + chunkSize, triangles.Count);
-                Vector3 min = Vector3.positiveInfinity;
-                Vector3 max = Vector3.negativeInfinity;
-                for (int triIndex = startTriangle; triIndex < endTriangle; triIndex++)
+                if (i == 0)
                 {
-                    for (int v = 0; v < 3; v++, vertexCount++)
-                    {
-                        Vector3 point = triangles[triIndex].vertices[v];
-                        min = Vector3.Min(min, point - Vector3.one * 0.01f);
-                        max = Vector3.Max(max, point + Vector3.one * 0.01f);
-                    }
+                    BVH.Add(BVHNode.CreateNodeFromTriangles(triangles.FindAll(x => x.mortonCode < cutValues[i])));
                 }
-
-                BVHNode node = new BVHNode();
-                node.center = (min + max) / 2f;
-                node.radius = Vector3.Distance(max, min) / 2f;
-                BVH.Add(node);
+                else
+                {
+                    BVH.Add(BVHNode.CreateNodeFromTriangles(triangles.FindAll(x => x.mortonCode > cutValues[i-1] && x.mortonCode < cutValues[i])));
+                }
             }
 
-            subdivisions *= 2;
+            int newCutValue = cutValues.First() >> 1;
+            int lastIndex = cutValues.Count - 1;
+            for (int j = 0; j < lastIndex; j++)
+            {
+                cutValues.Add(cutValues[j] | newCutValue);
+            }
+            cutValues.Add(newCutValue);
+
+            cutValues.Sort();
         }
     }
 }
