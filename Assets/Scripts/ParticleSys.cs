@@ -48,7 +48,7 @@ public class ParticleSys : MonoBehaviour
     private List<BVHTriangle> triangles = new List<BVHTriangle>();
 
     private List<BVHNode> BVH = new List<BVHNode>();
-    private readonly int BVHLevels = 5;
+    private readonly int BVHLevels = 8;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
@@ -306,6 +306,12 @@ public class ParticleSys : MonoBehaviour
                     min = Vector3.Min(min, point - Vector3.one * 0.01f);
                     max = Vector3.Max(max, point + Vector3.one * 0.01f);
                 }
+            }
+
+            if (triangles.Count == 0)
+            {
+                min = Vector3.zero;
+                max = Vector3.zero;
             }
 
             BVHNode node = new BVHNode();
