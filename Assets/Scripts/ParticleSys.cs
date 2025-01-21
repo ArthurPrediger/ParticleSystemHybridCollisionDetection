@@ -48,7 +48,7 @@ public class ParticleSys : MonoBehaviour
     private List<BVHTriangle> triangles = new List<BVHTriangle>();
 
     private List<BVHNode> BVH = new List<BVHNode>();
-    private readonly int BVHLevels = 8;
+    private readonly int BVHLevels = 6;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
@@ -174,13 +174,16 @@ public class ParticleSys : MonoBehaviour
 
             int numNodes = (int)Mathf.Pow(2f, BVHNodeLevelToRender);
 
+            int numEmpty = 0;
             for (int i = 0; i < numNodes; i++)
             {
-                SphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
                 BVHNode curNode = BVH[numNodes - 1 + i];
+                SphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
                 SphericalBVHNodes.Last().transform.position = curNode.center;
                 SphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
             }
+
+            Debug.Log(numEmpty);
         }
     }
 
@@ -287,10 +290,11 @@ public class ParticleSys : MonoBehaviour
     {
         public Vector3 center;
         public float radius = 0;
-        // If the node is a leaf node the first element is zero and the second
-        // is the index to the first triangle of the scence's triangle list,
-        // otherwise the two elements are indices to child nodes
-        public int[] childrenORindex = new int[2];
+        // If the node is a leaf node the first element is the index to the first triangle
+        // of the scence's triangle list but negative and the second element is the number
+        // of triangles encompassed by the bvh node. Otherwise the two elements are indices
+        // to child nodes
+        public int[] childrenORspan = new int[2];
 
         public static BVHNode CreateNodeFromTriangles(List<BVHTriangle> triangles)
         {
@@ -320,6 +324,37 @@ public class ParticleSys : MonoBehaviour
 
             return node;
         }
+    }
+
+    class TrianglesSpan
+    {
+        public List<BVHTriangle> triangles = new();
+        public int firstElementIndex = -1;
+    }
+    
+    private TrianglesSpan GetTrianglesInMortonCodeSpan(List<BVHTriangle> triangles, int minInclusive, int maxExclusive)
+    {
+        TrianglesSpan span = new TrianglesSpan();
+
+        if (triangles.Count > 0) span.firstElementIndex = 0;
+
+        foreach (BVHTriangle tri in triangles)
+        {
+            if(tri.mortonCode < minInclusive)
+            {
+                span.firstElementIndex++;
+            }
+            else if (tri.mortonCode >= minInclusive && tri.mortonCode < maxExclusive)
+            {
+                span.triangles.Add(tri);
+            }
+            else if (tri.mortonCode > maxExclusive)
+            {
+                break;
+            }
+        }
+
+        return span;
     }
 
     void MortonCodesBVHConstruction()
@@ -371,11 +406,15 @@ public class ParticleSys : MonoBehaviour
             {
                 if (i == 0)
                 {
-                    BVH.Add(BVHNode.CreateNodeFromTriangles(triangles.FindAll(x => x.mortonCode < cutValues[i])));
+                    TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, 0, cutValues[i]);
+                    BVH.Add(BVHNode.CreateNodeFromTriangles(triSpan.triangles));
+                    BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
                 else
                 {
-                    BVH.Add(BVHNode.CreateNodeFromTriangles(triangles.FindAll(x => x.mortonCode > cutValues[i-1] && x.mortonCode < cutValues[i])));
+                    TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, cutValues[i - 1], cutValues[i]);
+                    BVH.Add(BVHNode.CreateNodeFromTriangles(triSpan.triangles));
+                    BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
             }
 
@@ -388,6 +427,46 @@ public class ParticleSys : MonoBehaviour
             cutValues.Add(newCutValue);
 
             cutValues.Sort();
+        }
+
+        for (int i = 0; i < BVH.Count; i++)
+        {
+            int[] childrenIndices = new int[2] { 2 * i + 1, 2 * i + 2 };
+
+            if (BVH.Count <= childrenIndices[1]) break;
+
+            if (BVH[childrenIndices[0]].childrenORspan[1] > 0 &&
+                BVH[childrenIndices[1]].childrenORspan[1] > 0)
+            {
+                BVH[i].childrenORspan = childrenIndices;
+            }
+        }
+
+        PrintBVHNodes(0);
+    }
+
+    private void PrintBVHNodes(int nodeIndex, int nodeLevel = 0)
+    {
+        if (nodeIndex >= BVH.Count) return;
+
+        string offset = "";
+
+        for (int i = 0; i < nodeLevel; i++)
+        {
+            offset += "    ";
+        }
+
+        BVHNode curNode = BVH[nodeIndex];
+
+        if (curNode.childrenORspan[0] <= 0)
+        {
+            Debug.Log(offset + nodeLevel + ". Center: " + curNode.center + " Tris: " + curNode.childrenORspan[1]);
+        }
+        else
+        {
+            Debug.Log(offset + nodeLevel + ". Center: " + curNode.center);
+            PrintBVHNodes(2 * nodeIndex + 1, nodeLevel + 1);
+            PrintBVHNodes(2 * nodeIndex + 2, nodeLevel + 1);
         }
     }
 }
