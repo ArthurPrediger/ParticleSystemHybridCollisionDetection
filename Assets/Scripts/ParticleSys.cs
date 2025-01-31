@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.UIElements;
@@ -47,12 +48,13 @@ public class ParticleSys : MonoBehaviour
 
     private List<BVHTriangle> triangles = new List<BVHTriangle>();
 
-    private List<BVHNode> BVH = new List<BVHNode>();
+    private List<BVHSphereNode> BVH = new List<BVHSphereNode>();
     private readonly int BVHLevels = 6;
+    private const int maxTrisPerBVHNode = 2048;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
-    private List<GameObject> SphericalBVHNodes = new List<GameObject>();
+    private List<GameObject> sphericalBVHNodes = new();
     private int BVHNodeLevelToRender = -1;
 
     // Start is called before the first frame update
@@ -116,7 +118,9 @@ public class ParticleSys : MonoBehaviour
 
         PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "normalTexture", normalTexture);
 
-        MortonCodesBVHConstruction();
+        BuildBVHWithMortonCodes();
+        SplitLeafNodesWithSAH();
+        PrintBVHNodes();
     }
 
     // Update is called once per frame
@@ -168,19 +172,19 @@ public class ParticleSys : MonoBehaviour
         {
             BVHNodeLevelToRender = (BVHNodeLevelToRender + 1) % BVHLevels;
 
-            foreach (GameObject node in SphericalBVHNodes)
+            foreach (GameObject node in sphericalBVHNodes)
                 Destroy(node);
-            SphericalBVHNodes.Clear();
+            sphericalBVHNodes.Clear();
 
             int numNodes = (int)Mathf.Pow(2f, BVHNodeLevelToRender);
 
             int numEmpty = 0;
             for (int i = 0; i < numNodes; i++)
             {
-                BVHNode curNode = BVH[numNodes - 1 + i];
-                SphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
-                SphericalBVHNodes.Last().transform.position = curNode.center;
-                SphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
+                BVHSphereNode curNode = BVH[numNodes - 1 + i];
+                sphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
+                sphericalBVHNodes.Last().transform.position = curNode.center;
+                sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
             }
 
             Debug.Log(numEmpty);
@@ -284,27 +288,30 @@ public class ParticleSys : MonoBehaviour
 
             return mortonCode.CompareTo(other.mortonCode);
         }
+
+        public Vector3 Centroid()
+        {
+            return (vertices[0] + vertices[1] + vertices[2]) / 3f;
+        }
     }
 
-    class BVHNode
+    class BVHSphereNode
     {
-        public Vector3 center;
+        public Vector3 center = Vector3.zero;
         public float radius = 0;
         // If the node is a leaf node the first element is the index to the first triangle
         // of the scence's triangle list but negative and the second element is the number
         // of triangles encompassed by the bvh node. Otherwise the two elements are indices
         // to child nodes
-        public int[] childrenORspan = new int[2];
+        public int[] childrenORspan = new int[2] { 0, 0 };
 
-        public static BVHNode CreateNodeFromTriangles(List<BVHTriangle> triangles)
+        public static BVHSphereNode CreateNodeFromTriangles(List<BVHTriangle> triangles)
         {
-            int vertexCount = 0;
-
             Vector3 min = Vector3.positiveInfinity;
             Vector3 max = Vector3.negativeInfinity;
             foreach (BVHTriangle tri in triangles)
             {
-                for (int v = 0; v < 3; v++, vertexCount++)
+                for (int v = 0; v < 3; v++)
                 {
                     Vector3 point = tri.vertices[v];
                     min = Vector3.Min(min, point - Vector3.one * 0.01f);
@@ -318,11 +325,31 @@ public class ParticleSys : MonoBehaviour
                 max = Vector3.zero;
             }
 
-            BVHNode node = new BVHNode();
+            BVHSphereNode node = new BVHSphereNode();
             node.center = (min + max) / 2f;
-            node.radius = Vector3.Distance(max, min) / 2f;
+            node.radius = Vector3.Distance(min, max) / 2f;
 
             return node;
+        }
+
+        public bool IsLeafNode()
+        {
+            return childrenORspan[0] <= 0;
+        }
+
+        public int FirstTriIndex()
+        {
+            return Mathf.Abs(childrenORspan[0]);
+        }
+
+        public int LastTriIndexExclusive()
+        {
+            return Mathf.Abs(childrenORspan[0]) + childrenORspan[1];
+        }
+
+        public int TrisCount()
+        {
+            return childrenORspan[1];
         }
     }
 
@@ -357,7 +384,7 @@ public class ParticleSys : MonoBehaviour
         return span;
     }
 
-    void MortonCodesBVHConstruction()
+    void BuildBVHWithMortonCodes()
     {
         BoundingBox box = new BoundingBox();
 
@@ -407,13 +434,13 @@ public class ParticleSys : MonoBehaviour
                 if (i == 0)
                 {
                     TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, 0, cutValues[i]);
-                    BVH.Add(BVHNode.CreateNodeFromTriangles(triSpan.triangles));
+                    BVH.Add(BVHSphereNode.CreateNodeFromTriangles(triSpan.triangles));
                     BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
                 else
                 {
                     TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, cutValues[i - 1], cutValues[i]);
-                    BVH.Add(BVHNode.CreateNodeFromTriangles(triSpan.triangles));
+                    BVH.Add(BVHSphereNode.CreateNodeFromTriangles(triSpan.triangles));
                     BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
             }
@@ -441,11 +468,146 @@ public class ParticleSys : MonoBehaviour
                 BVH[i].childrenORspan = childrenIndices;
             }
         }
-
-        PrintBVHNodes(0);
     }
 
-    private void PrintBVHNodes(int nodeIndex, int nodeLevel = 0)
+    private void SplitLeafNodesWithSAH(int nodeIndex = 0, int nodeLevel = 0, int maxTrisPerBVHNode = maxTrisPerBVHNode)
+    {
+        if (nodeIndex >= BVH.Count) return;
+
+        BVHSphereNode curNode = BVH[nodeIndex];
+
+        if (curNode.IsLeafNode())
+        {
+            if (curNode.TrisCount() > maxTrisPerBVHNode)
+            {
+                int levelNodeCount = Mathf.CeilToInt(Mathf.Pow(2f, nodeLevel+1));
+                if (BVH.Count < levelNodeCount)
+                {
+                    for (int i = 0; i < levelNodeCount; i++)
+                    {
+                        BVH.Add(new BVHSphereNode());
+                    }
+                }
+
+                // determine split axis using SAH
+                int bestAxis = -1;
+                float bestPos = 0, bestCost = float.MaxValue;           
+                for (int i = curNode.FirstTriIndex(); i < curNode.LastTriIndexExclusive(); i++)
+                {
+                    BVHTriangle triangle = triangles[i];
+                    Vector3 centroid = triangle.Centroid();
+                    for (int axis = 0; axis < 3; axis++)
+                    {
+                        float candidatePos = centroid[axis];
+                        float cost = EvaluateSAH(curNode, axis, candidatePos);
+                        if (cost < bestCost)
+                        {
+                            bestPos = candidatePos;
+                            bestAxis = axis;
+                            bestCost = cost;
+                        }
+                    }
+                }
+
+                int splitAxis = bestAxis;
+                float splitPos = bestPos;
+
+                int partIndex = Partition(triangles, splitAxis, splitPos, curNode.FirstTriIndex(), curNode.TrisCount());
+
+                int childIndex = 2 * nodeIndex + 1;
+
+                List<BVHTriangle> childTris = triangles.GetRange(curNode.FirstTriIndex(), partIndex - curNode.FirstTriIndex());
+                BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
+                BVH[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
+
+                childIndex++;
+                childTris = triangles.GetRange(curNode.FirstTriIndex() + partIndex, curNode.LastTriIndexExclusive() - partIndex);
+                BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
+                BVH[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
+
+                curNode.childrenORspan = new int[2] { 2 * nodeIndex + 1, 2 * nodeIndex + 2 };
+            }
+        }
+        else
+        {
+            SplitLeafNodesWithSAH(2 * nodeIndex + 1, nodeLevel + 1);
+            SplitLeafNodesWithSAH(2 * nodeIndex + 2, nodeLevel + 1);
+        }
+    }
+
+    class BoundingSphere
+    {
+        public Vector3 min = Vector3.positiveInfinity;
+        public Vector3 max = Vector3.negativeInfinity;
+        public Vector3 center = Vector3.zero;
+        public float radius = 0;
+
+        public void Grow(BVHTriangle tri)
+        {
+            foreach (Vector3 vertex in tri.vertices)
+            {
+                min = Vector3.Min(min, vertex - Vector3.one * 0.01f);
+                max = Vector3.Max(max, vertex + Vector3.one * 0.01f);
+            }
+
+            center = (min + max) / 2f;
+            radius = Vector3.Distance(min, max) / 2f;
+        }
+
+        public float SufaceArea()
+        {
+            return 4 * Mathf.PI * radius * radius;
+        }
+    }
+
+    float EvaluateSAH(BVHSphereNode node, int axis, float pos)
+    {
+        // determine triangle counts and bounds for this split candidate
+        BoundingSphere bSphere0 = new(), bSphere1 = new();
+        int count0 = 0, count1 = 0;
+        for (int i = node.FirstTriIndex(); i < node.LastTriIndexExclusive(); i++)
+        {
+            BVHTriangle tri = triangles[i];
+            if (tri.Centroid()[axis] < pos)
+            {
+                count0++;
+                bSphere0.Grow(tri);
+            }
+            else
+            {
+                count1++;
+                bSphere1.Grow(tri);
+            }
+        }
+        float cost = count0 * bSphere0.SufaceArea() + count1 * bSphere1.SufaceArea();
+        return cost > 0 ? cost : float.MaxValue;
+    }
+
+    private static int Partition(List<BVHTriangle> tris, int axis, float pos, int startIndex, int count)
+    {
+        // Ensure valid subset range
+        int endIndex = Mathf.Min(startIndex + count, tris.Count);
+        if (startIndex >= tris.Count || count <= 0) return startIndex;
+
+        int left = startIndex;
+        int right = endIndex - 1;
+
+        while (left <= right)
+        {
+            while (left <= right && tris[left].Centroid()[axis] < pos) left++;
+            while (left <= right && tris[right].Centroid()[axis] >= pos) right--;
+            if (left < right)
+            {
+                (tris[left], tris[right]) = (tris[right], tris[left]); // Swap
+                left++;
+                right--;
+            }
+        }
+
+        return left; // Return partition index
+    }
+
+    private void PrintBVHNodes(int nodeIndex = 0, int nodeLevel = 0)
     {
         if (nodeIndex >= BVH.Count) return;
 
@@ -456,7 +618,7 @@ public class ParticleSys : MonoBehaviour
             offset += "    ";
         }
 
-        BVHNode curNode = BVH[nodeIndex];
+        BVHSphereNode curNode = BVH[nodeIndex];
 
         if (curNode.childrenORspan[0] <= 0)
         {
