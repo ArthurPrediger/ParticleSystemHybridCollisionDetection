@@ -49,8 +49,8 @@ public class ParticleSys : MonoBehaviour
     private List<BVHTriangle> triangles = new List<BVHTriangle>();
 
     private List<BVHSphereNode> BVH = new List<BVHSphereNode>();
-    private readonly int BVHLevels = 6;
-    private const int maxTrisPerBVHNode = 2048;
+    private int BVHLevels = 6;
+    private const int maxTrisPerBVHNode = 256;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
@@ -472,7 +472,9 @@ public class ParticleSys : MonoBehaviour
 
     private void SplitLeafNodesWithSAH(int nodeIndex = 0, int nodeLevel = 0, int maxTrisPerBVHNode = maxTrisPerBVHNode)
     {
-        if (nodeIndex >= BVH.Count) return;
+        if (nodeIndex >= BVH.Count || nodeLevel > 10) return;
+
+        BVHLevels = Mathf.Max(BVHLevels, nodeLevel);
 
         BVHSphereNode curNode = BVH[nodeIndex];
 
@@ -491,7 +493,7 @@ public class ParticleSys : MonoBehaviour
 
                 // determine split axis using SAH
                 int bestAxis = -1;
-                float bestPos = 0, bestCost = float.MaxValue;           
+                float bestPos = 0f, bestCost = float.MaxValue;           
                 for (int i = curNode.FirstTriIndex(); i < curNode.LastTriIndexExclusive(); i++)
                 {
                     BVHTriangle triangle = triangles[i];
@@ -521,18 +523,16 @@ public class ParticleSys : MonoBehaviour
                 BVH[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
 
                 childIndex++;
-                childTris = triangles.GetRange(curNode.FirstTriIndex() + partIndex, curNode.LastTriIndexExclusive() - partIndex);
+                childTris = triangles.GetRange(partIndex, curNode.TrisCount() - childTris.Count);
                 BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
                 BVH[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
 
                 curNode.childrenORspan = new int[2] { 2 * nodeIndex + 1, 2 * nodeIndex + 2 };
             }
         }
-        else
-        {
-            SplitLeafNodesWithSAH(2 * nodeIndex + 1, nodeLevel + 1);
-            SplitLeafNodesWithSAH(2 * nodeIndex + 2, nodeLevel + 1);
-        }
+
+        SplitLeafNodesWithSAH(2 * nodeIndex + 1, nodeLevel + 1);
+        SplitLeafNodesWithSAH(2 * nodeIndex + 2, nodeLevel + 1);
     }
 
     class BoundingSphere
@@ -540,7 +540,7 @@ public class ParticleSys : MonoBehaviour
         public Vector3 min = Vector3.positiveInfinity;
         public Vector3 max = Vector3.negativeInfinity;
         public Vector3 center = Vector3.zero;
-        public float radius = 0;
+        public float radius = 0f;
 
         public void Grow(BVHTriangle tri)
         {
@@ -556,7 +556,7 @@ public class ParticleSys : MonoBehaviour
 
         public float SufaceArea()
         {
-            return 4 * Mathf.PI * radius * radius;
+            return 4f * Mathf.PI * radius * radius;
         }
     }
 
@@ -580,7 +580,7 @@ public class ParticleSys : MonoBehaviour
             }
         }
         float cost = count0 * bSphere0.SufaceArea() + count1 * bSphere1.SufaceArea();
-        return cost > 0 ? cost : float.MaxValue;
+        return cost > 0f ? cost : float.MaxValue;
     }
 
     private static int Partition(List<BVHTriangle> tris, int axis, float pos, int startIndex, int count)
