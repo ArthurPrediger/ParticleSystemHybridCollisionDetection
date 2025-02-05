@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEditor.Experimental.GraphView;
@@ -49,8 +50,11 @@ public class ParticleSys : MonoBehaviour
     private List<BVHTriangle> triangles = new List<BVHTriangle>();
 
     private List<BVHSphereNode> BVH = new List<BVHSphereNode>();
-    private int BVHLevels = 6;
-    private const int maxTrisPerBVHNode = 256;
+    private const int numLevelsBVHMorton = 6;
+    private const int maxLevelBVH = 16;
+    private const int maxTrisPerBVHNode = 32;
+    private int numLastLevelBVH = 0;
+    private const int maxSAHSamples = 64;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
@@ -119,7 +123,11 @@ public class ParticleSys : MonoBehaviour
         PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "normalTexture", normalTexture);
 
         BuildBVHWithMortonCodes();
-        SplitLeafNodesWithSAH();
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+        SplitLeafNodesWithSAH_();
+        sw.Stop();
+        UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBVH - numLevelsBVHMorton + 1) + " levels: " + sw.Elapsed.TotalSeconds);
         PrintBVHNodes();
     }
 
@@ -170,7 +178,7 @@ public class ParticleSys : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            BVHNodeLevelToRender = (BVHNodeLevelToRender + 1) % BVHLevels;
+            BVHNodeLevelToRender = (BVHNodeLevelToRender + 1) % (numLastLevelBVH + 1);
 
             foreach (GameObject node in sphericalBVHNodes)
                 Destroy(node);
@@ -178,7 +186,6 @@ public class ParticleSys : MonoBehaviour
 
             int numNodes = (int)Mathf.Pow(2f, BVHNodeLevelToRender);
 
-            int numEmpty = 0;
             for (int i = 0; i < numNodes; i++)
             {
                 BVHSphereNode curNode = BVH[numNodes - 1 + i];
@@ -186,8 +193,6 @@ public class ParticleSys : MonoBehaviour
                 sphericalBVHNodes.Last().transform.position = curNode.center;
                 sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
             }
-
-            Debug.Log(numEmpty);
         }
     }
 
@@ -280,6 +285,7 @@ public class ParticleSys : MonoBehaviour
     class BVHTriangle : IComparable<BVHTriangle>
     {
         public Vector3[] vertices = new Vector3[3];
+        public Vector3 centroid = Vector3.zero;
         public int mortonCode = 0;
 
         public int CompareTo(BVHTriangle other)
@@ -287,11 +293,6 @@ public class ParticleSys : MonoBehaviour
             if(other == null) return 1;
 
             return mortonCode.CompareTo(other.mortonCode);
-        }
-
-        public Vector3 Centroid()
-        {
-            return (vertices[0] + vertices[1] + vertices[2]) / 3f;
         }
     }
 
@@ -413,10 +414,15 @@ public class ParticleSys : MonoBehaviour
             }
         }
 
+        foreach(BVHTriangle t in triangles)
+        {
+            t.centroid = (t.vertices[0] + t.vertices[1] + t.vertices[2]) / 3f;
+        }
+
         box.center = (box.max + box.min) * 0.5f;
         box.length = (box.max - box.min);
 
-        Debug.Log("Number of triangles: " +  triangles.Count);
+        UnityEngine.Debug.Log("Number of triangles: " +  triangles.Count);
 
         foreach(BVHTriangle tri in triangles)
         {
@@ -427,7 +433,7 @@ public class ParticleSys : MonoBehaviour
 
         List<int> cutValues = new(){ 1 << 30 };
 
-        for (int numLevels = 0; numLevels < BVHLevels; numLevels++)
+        for (int numLevels = 0; numLevels < numLevelsBVHMorton; numLevels++)
         {
             for (int i = 0; i < Mathf.Pow(2, numLevels); i++)
             {
@@ -470,71 +476,6 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    private void SplitLeafNodesWithSAH(int nodeIndex = 0, int nodeLevel = 0, int maxTrisPerBVHNode = maxTrisPerBVHNode)
-    {
-        if (nodeIndex >= BVH.Count || nodeLevel > 10) return;
-
-        BVHLevels = Mathf.Max(BVHLevels, nodeLevel);
-
-        BVHSphereNode curNode = BVH[nodeIndex];
-
-        if (curNode.IsLeafNode())
-        {
-            if (curNode.TrisCount() > maxTrisPerBVHNode)
-            {
-                int levelNodeCount = Mathf.CeilToInt(Mathf.Pow(2f, nodeLevel+1));
-                if (BVH.Count < levelNodeCount)
-                {
-                    for (int i = 0; i < levelNodeCount; i++)
-                    {
-                        BVH.Add(new BVHSphereNode());
-                    }
-                }
-
-                // determine split axis using SAH
-                int bestAxis = -1;
-                float bestPos = 0f, bestCost = float.MaxValue;           
-                for (int i = curNode.FirstTriIndex(); i < curNode.LastTriIndexExclusive(); i++)
-                {
-                    BVHTriangle triangle = triangles[i];
-                    Vector3 centroid = triangle.Centroid();
-                    for (int axis = 0; axis < 3; axis++)
-                    {
-                        float candidatePos = centroid[axis];
-                        float cost = EvaluateSAH(curNode, axis, candidatePos);
-                        if (cost < bestCost)
-                        {
-                            bestPos = candidatePos;
-                            bestAxis = axis;
-                            bestCost = cost;
-                        }
-                    }
-                }
-
-                int splitAxis = bestAxis;
-                float splitPos = bestPos;
-
-                int partIndex = Partition(triangles, splitAxis, splitPos, curNode.FirstTriIndex(), curNode.TrisCount());
-
-                int childIndex = 2 * nodeIndex + 1;
-
-                List<BVHTriangle> childTris = triangles.GetRange(curNode.FirstTriIndex(), partIndex - curNode.FirstTriIndex());
-                BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
-                BVH[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
-
-                childIndex++;
-                childTris = triangles.GetRange(partIndex, curNode.TrisCount() - childTris.Count);
-                BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
-                BVH[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
-
-                curNode.childrenORspan = new int[2] { 2 * nodeIndex + 1, 2 * nodeIndex + 2 };
-            }
-        }
-
-        SplitLeafNodesWithSAH(2 * nodeIndex + 1, nodeLevel + 1);
-        SplitLeafNodesWithSAH(2 * nodeIndex + 2, nodeLevel + 1);
-    }
-
     class BoundingSphere
     {
         public Vector3 min = Vector3.positiveInfinity;
@@ -560,6 +501,104 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
+    private void SplitLeafNodesWithSAH_(int maxTrisPerBVHNode = maxTrisPerBVHNode)
+    {
+        for (int nodeLevel = numLevelsBVHMorton; nodeLevel <= maxLevelBVH; nodeLevel++)
+        {
+            int levelNodeCount = Mathf.CeilToInt(Mathf.Pow(2f, nodeLevel));
+            if (BVH.Count < levelNodeCount)
+            {
+                for (int i = 0; i < levelNodeCount; i++)
+                {
+                    BVH.Add(new BVHSphereNode());
+                }
+            }
+        }
+
+        List<int> nodesToTraverse = new List<int>() { 0 };
+
+        while (nodesToTraverse.Count > 0)
+        {
+            int nodeIndex = nodesToTraverse.Last();
+            nodesToTraverse.RemoveAt(nodesToTraverse.Count - 1);
+            BVHSphereNode curNode = BVH[nodeIndex];
+
+            if (curNode.IsLeafNode())
+            {
+                int nodeLevel = Mathf.FloorToInt(Mathf.Log(nodeIndex + 1f, 2f));
+                numLastLevelBVH = Mathf.Max(numLastLevelBVH, nodeLevel);
+                if (curNode.TrisCount() > maxTrisPerBVHNode && nodeLevel < maxLevelBVH)
+                {
+                    // Sample random triangle indices contained inside the current leaf node to evaluate SAH
+                    List<int> trisSamples = new List<int>();
+
+                    if (curNode.TrisCount() <= maxSAHSamples)
+                    {
+                        for (int i = 0; i < curNode.TrisCount(); i++)
+                        {
+                            trisSamples.Add(curNode.FirstTriIndex() + i);
+                        }
+                    }
+                    else
+                    {
+                        float randomRange = curNode.TrisCount() / maxSAHSamples;
+
+                        for (int i = 0; i <= maxSAHSamples; i++)
+                        {
+                            float randomOffset = (UnityEngine.Random.Range(0, 1f) * randomRange);
+                            trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt(randomOffset + (randomRange * i)));
+                        }
+                    }
+
+                    // Determine split axis using SAH
+                    int bestAxis = -1;
+                    float bestPos = 0f, bestCost = float.MaxValue;
+                    foreach (int indexSample in trisSamples)
+                    {
+                        BVHTriangle triangle = triangles[indexSample];
+                        for (int axis = 0; axis < 3; axis++)
+                        {
+                            float candidatePos = triangle.centroid[axis];
+                            float cost = EvaluateSAH(curNode, axis, candidatePos);
+                            if (cost < bestCost)
+                            {
+                                bestPos = candidatePos;
+                                bestAxis = axis;
+                                bestCost = cost;
+                            }
+                        }
+                    }
+
+                    int splitAxis = bestAxis;
+                    float splitPos = bestPos;
+
+                    int partIndex = Partition(triangles, splitAxis, splitPos, curNode.FirstTriIndex(), curNode.TrisCount());
+
+                    int childIndex = 2 * nodeIndex + 1;
+
+                    List<BVHTriangle> childTris = triangles.GetRange(curNode.FirstTriIndex(), partIndex - curNode.FirstTriIndex());
+                    BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
+                    BVH[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
+
+                    childIndex++;
+                    childTris = triangles.GetRange(partIndex, curNode.TrisCount() - childTris.Count);
+                    BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
+                    BVH[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
+
+                    curNode.childrenORspan = new int[2] { 2 * nodeIndex + 1, 2 * nodeIndex + 2 };
+
+                    nodesToTraverse.Add(curNode.childrenORspan[1]);
+                    nodesToTraverse.Add(curNode.childrenORspan[0]);
+                }
+            }
+            else
+            {
+                nodesToTraverse.Add(curNode.childrenORspan[1]);
+                nodesToTraverse.Add(curNode.childrenORspan[0]);
+            }
+        }
+    }
+
     float EvaluateSAH(BVHSphereNode node, int axis, float pos)
     {
         // determine triangle counts and bounds for this split candidate
@@ -568,7 +607,7 @@ public class ParticleSys : MonoBehaviour
         for (int i = node.FirstTriIndex(); i < node.LastTriIndexExclusive(); i++)
         {
             BVHTriangle tri = triangles[i];
-            if (tri.Centroid()[axis] < pos)
+            if (tri.centroid[axis] < pos)
             {
                 count0++;
                 bSphere0.Grow(tri);
@@ -594,8 +633,8 @@ public class ParticleSys : MonoBehaviour
 
         while (left <= right)
         {
-            while (left <= right && tris[left].Centroid()[axis] < pos) left++;
-            while (left <= right && tris[right].Centroid()[axis] >= pos) right--;
+            while (left <= right && tris[left].centroid[axis] < pos) left++;
+            while (left <= right && tris[right].centroid[axis] >= pos) right--;
             if (left < right)
             {
                 (tris[left], tris[right]) = (tris[right], tris[left]); // Swap
@@ -622,11 +661,11 @@ public class ParticleSys : MonoBehaviour
 
         if (curNode.childrenORspan[0] <= 0)
         {
-            Debug.Log(offset + nodeLevel + ". Center: " + curNode.center + " Tris: " + curNode.childrenORspan[1]);
+            UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.center + " Tris: " + curNode.childrenORspan[1]);
         }
         else
         {
-            Debug.Log(offset + nodeLevel + ". Center: " + curNode.center);
+            UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.center);
             PrintBVHNodes(2 * nodeIndex + 1, nodeLevel + 1);
             PrintBVHNodes(2 * nodeIndex + 2, nodeLevel + 1);
         }
