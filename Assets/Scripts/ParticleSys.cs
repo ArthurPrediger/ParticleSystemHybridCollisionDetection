@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using UnityEditor.Experimental.GraphView;
 using UnityEngine;
@@ -60,6 +61,7 @@ public class ParticleSys : MonoBehaviour
     private GameObject sphericalNodePrefab;
     private List<GameObject> sphericalBVHNodes = new();
     private int BVHNodeLevelToRender = -1;
+    private bool isRenderingLeaves = false;
 
     // Start is called before the first frame update
     void Start()
@@ -199,6 +201,40 @@ public class ParticleSys : MonoBehaviour
                 sphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
                 sphericalBVHNodes.Last().transform.position = curNode.center;
                 sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
+            }
+        }
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            foreach (GameObject node in sphericalBVHNodes)
+                Destroy(node);
+            sphericalBVHNodes.Clear();
+
+            if (isRenderingLeaves)
+            {
+                isRenderingLeaves = false;
+            }
+            else
+            {
+                isRenderingLeaves = true;
+                List<int> toTraverse = new() { 0 };
+
+                while (toTraverse.Count > 0)
+                {
+                    BVHSphereNode curNode = BVH[toTraverse.Last()];
+                    toTraverse.RemoveAt(toTraverse.Count - 1);
+
+                    if (curNode.IsLeafNode())
+                    {
+                        sphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
+                        sphericalBVHNodes.Last().transform.position = curNode.center;
+                        sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.radius * 2f);
+                    }
+                    else
+                    {
+                        toTraverse.Add(curNode.childrenORspan[1]);
+                        toTraverse.Add(curNode.childrenORspan[0]);
+                    }
+                }
             }
         }
     }
