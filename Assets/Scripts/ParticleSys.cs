@@ -122,13 +122,20 @@ public class ParticleSys : MonoBehaviour
 
         PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "normalTexture", normalTexture);
 
+        Stopwatch sw0 = new Stopwatch();
+        Stopwatch sw1 = new Stopwatch();
+
+        sw0.Start();
+
         BuildBVHWithMortonCodes();
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
-        SplitLeafNodesWithSAH_();
-        sw.Stop();
-        UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBVH - numLevelsBVHMorton + 1) + " levels: " + sw.Elapsed.TotalSeconds);
+        sw1.Start();
+        SplitLeafNodesWithSAH();
+        sw1.Stop();
+        sw0.Stop();
+        UnityEngine.Debug.Log("Time to build BVH with " + (numLastLevelBVH + 1) + " levels: " + sw0.Elapsed.TotalSeconds + " seconds");
+        UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBVH - numLevelsBVHMorton + 1) + " levels: " + sw1.Elapsed.TotalSeconds + " seconds");
         PrintBVHNodes();
+        UnityEngine.Debug.Log("Triangles after SAH: " + trisAfterSAH);
     }
 
     // Update is called once per frame
@@ -328,7 +335,22 @@ public class ParticleSys : MonoBehaviour
 
             BVHSphereNode node = new BVHSphereNode();
             node.center = (min + max) / 2f;
+            //node.radius = 0;
             node.radius = Vector3.Distance(min, max) / 2f;
+
+            //// Refine to get the smallest sphere
+            //foreach (BVHTriangle tri in triangles)
+            //{
+            //    for (int v = 0; v < 3; v++)
+            //    {
+            //        Vector3 point = tri.vertices[v];
+            //        float distance = Vector3.Distance(node.center, point);
+            //        if (distance > node.radius)
+            //        {
+            //            node.radius = distance;
+            //        }
+            //    }
+            //}
 
             return node;
         }
@@ -398,6 +420,7 @@ public class ParticleSys : MonoBehaviour
             if (obj.TryGetComponent(out MeshFilter meshFilter))
             {
                 Mesh mesh = meshFilter.sharedMesh;
+                if (!mesh) continue;
                 int vertexIndex = 3;
                 foreach (int i in mesh.triangles)
                 {
@@ -501,7 +524,7 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    private void SplitLeafNodesWithSAH_(int maxTrisPerBVHNode = maxTrisPerBVHNode)
+    private void SplitLeafNodesWithSAH(int maxTrisPerBVHNode = maxTrisPerBVHNode)
     {
         for (int nodeLevel = numLevelsBVHMorton; nodeLevel <= maxLevelBVH; nodeLevel++)
         {
@@ -541,12 +564,18 @@ public class ParticleSys : MonoBehaviour
                     }
                     else
                     {
-                        float randomRange = curNode.TrisCount() / maxSAHSamples;
+                        int bucketSize = Mathf.FloorToInt((float)curNode.TrisCount() / maxSAHSamples);
 
-                        for (int i = 0; i <= maxSAHSamples; i++)
+                        for (int i = 0; i < maxSAHSamples - 1; i++)
                         {
-                            float randomOffset = (UnityEngine.Random.Range(0, 1f) * randomRange);
-                            trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt(randomOffset + (randomRange * i)));
+                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * bucketSize), bucketSize-1);
+                            trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt((bucketSize * i) + randomOffset));
+                        }
+                        {
+                            int startIndexLastBucket = bucketSize * (maxSAHSamples - 1);
+                            int lastBucketSize = curNode.TrisCount() - startIndexLastBucket;
+                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * lastBucketSize), lastBucketSize - 1);
+                            trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt(randomOffset + startIndexLastBucket));
                         }
                     }
 
@@ -646,6 +675,8 @@ public class ParticleSys : MonoBehaviour
         return left; // Return partition index
     }
 
+    private int trisAfterSAH = 0;
+
     private void PrintBVHNodes(int nodeIndex = 0, int nodeLevel = 0)
     {
         if (nodeIndex >= BVH.Count) return;
@@ -661,7 +692,8 @@ public class ParticleSys : MonoBehaviour
 
         if (curNode.childrenORspan[0] <= 0)
         {
-            UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.center + " Tris: " + curNode.childrenORspan[1]);
+            UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.center + " Tris: " + curNode.TrisCount());
+            trisAfterSAH += curNode.TrisCount();
         }
         else
         {
