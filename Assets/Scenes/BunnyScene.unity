@@ -906,9 +906,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a7f29c51680da4c498db469b7e70789b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  PSReactionUpdateCS: {fileID: 7200000, guid: b531aa44beb55d1499b524db443208f5, type: 3}
-  PSScreenSpaceCollisionDetectionCS: {fileID: 7200000, guid: 837a2ed578462624bacb106ce55a8f8b, type: 3}
-  PSVolumeStructureCollisionDetectionCS: {fileID: 7200000, guid: 75ba698db4d96374c83201e3e80ab83e, type: 3}
+  psReactionUpdateCs: {fileID: 7200000, guid: b531aa44beb55d1499b524db443208f5, type: 3}
+  psScreenSpaceCollisionDetectionCs: {fileID: 7200000, guid: 837a2ed578462624bacb106ce55a8f8b, type: 3}
+  psVolumeStructureCollisionDetectionCs: {fileID: 7200000, guid: 75ba698db4d96374c83201e3e80ab83e, type: 3}
   instancedParticlesMat: {fileID: 2100000, guid: 89bf4ae66bc8c514f9fac6aafc8583cd, type: 2}
   particleMesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
   textureImage: {fileID: 780729455}

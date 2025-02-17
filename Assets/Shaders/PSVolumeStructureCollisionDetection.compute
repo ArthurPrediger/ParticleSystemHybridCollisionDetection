@@ -1,10 +1,26 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSVolumeStructureCollisionDetection
 
+struct BvhSphereNode
+{
+    float3 center;
+    float radius;
+    int childOrStartNegated;
+    int childOrSize;
+};
+
+struct BvhTriangle
+{
+    float3 vertices[3];
+};
+
+RWStructuredBuffer<BvhSphereNode> bvh;
+RWStructuredBuffer<BvhTriangle> bvhTriangles;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-ConsumeStructuredBuffer<int> particlesWithoutCollision;
+ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
+float deltaTime;
 
 [numthreads(16,1,1)]
 void PSVolumeStructureCollisionDetection (uint3 id : SV_DispatchThreadID)

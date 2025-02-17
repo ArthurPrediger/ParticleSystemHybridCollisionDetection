@@ -3,7 +3,7 @@
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-AppendStructuredBuffer<int> particlesWithoutCollision;
+AppendStructuredBuffer<int> particlesWithoutDepthCollision;
 matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;
@@ -46,6 +46,6 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        //particlesWithoutCollision.Append(id.x);
+        //particlesWithoutDepthCollision.Append(id.x);
     }
 }

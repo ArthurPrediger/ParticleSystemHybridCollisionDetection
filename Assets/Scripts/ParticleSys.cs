@@ -12,14 +12,14 @@ using UnityEngine.UIElements;
 public class ParticleSys : MonoBehaviour
 {
     [SerializeField]
-    private ComputeShader PSReactionUpdateCS;
-    private int kernelIDReacUpdate;
+    private ComputeShader psReactionUpdateCs;
+    private int kernelIdReactUpdate;
     [SerializeField]
-    private ComputeShader PSScreenSpaceCollisionDetectionCS;
-    private int kernelIDScrSpaceColDetc;
+    private ComputeShader psScreenSpaceCollisionDetectionCs;
+    private int kernelIdScrSpaceColDetc;
     [SerializeField]
-    private ComputeShader PSVolumeStructureCollisionDetectionCS;
-    private int kernelIDVolStructColDetc;
+    private ComputeShader psVolumeStructureCollisionDetectionCs;
+    private int kernelIdVolStructColDetc;
 
     [SerializeField]
     private Material instancedParticlesMat;
@@ -34,9 +34,11 @@ public class ParticleSys : MonoBehaviour
     //private List<float> particlesAliveTime = new();
     //private List<float> particlesLifeSpan = new();
 
-    private ComputeBuffer particlesPosCB;
-    private ComputeBuffer particlesVelCB;
-    private ComputeBuffer particlesWithoutCollisionCB;
+    private ComputeBuffer particlesPosCb;
+    private ComputeBuffer particlesVelCb;
+    private ComputeBuffer particlesWithoutDepthCollisionCb;
+    private ComputeBuffer bvhCb;
+    private ComputeBuffer bvhTrianglesCb;
     //private ComputeBuffer particlesInitPosCB;
     //private ComputeBuffer particlesAliveTimeCB;
     //private ComputeBuffer particlesLifeSpanCB;
@@ -48,19 +50,19 @@ public class ParticleSys : MonoBehaviour
 
     private float timerResetParticlesPos = 0f;
 
-    private List<BVHTriangle> triangles = new List<BVHTriangle>();
+    private List<BvhTriangle> triangles = new();
 
-    private List<BVHSphereNode> BVH = new List<BVHSphereNode>();
+    private List<BvhSphereNode> bvh = new();
     private const int numLevelsBVHMorton = 6;
-    private const int maxLevelBVH = 16;
-    private const int maxTrisPerBVHNode = 32;
-    private int numLastLevelBVH = 0;
-    private const int maxSAHSamples = 64;
+    private const int maxLevelBvh = 16;
+    private const int maxTrisPerBvhNode = 32;
+    private int numLastLevelBvh = 0;
+    private const int maxSahSamples = 64;
 
     [SerializeField]
     private GameObject sphericalNodePrefab;
-    private List<GameObject> sphericalBVHNodes = new();
-    private int BVHNodeLevelToRender = -1;
+    private List<GameObject> sphericalBvhNodes = new();
+    private int bvhNodeLevelToRender = -1;
     private bool isRenderingLeaves = false;
 
     // Start is called before the first frame update
@@ -83,61 +85,95 @@ public class ParticleSys : MonoBehaviour
         }
 
         // Compute buffer IDs setting
-        kernelIDReacUpdate = PSReactionUpdateCS.FindKernel("PSReactionUpdate");
-        kernelIDScrSpaceColDetc = PSScreenSpaceCollisionDetectionCS.FindKernel("PSScreenSpaceCollisionDetection");
-        kernelIDVolStructColDetc = PSVolumeStructureCollisionDetectionCS.FindKernel("PSVolumeStructureCollisionDetection");
+        kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
+        kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
+        kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
 
         // Particles Positions gpu buffer setting
-        particlesPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
-        particlesPosCB.SetData(particlesPos.ToArray());
+        particlesPosCb = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
+        particlesPosCb.SetData(particlesPos.ToArray());
 
-        instancedParticlesMat.SetBuffer("particlesPos", particlesPosCB);
-        PSReactionUpdateCS.SetBuffer(kernelIDReacUpdate, "particlesPos", particlesPosCB);
-        PSScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDScrSpaceColDetc, "particlesPos", particlesPosCB);
-        PSVolumeStructureCollisionDetectionCS.SetBuffer(kernelIDVolStructColDetc, "particlesPos", particlesPosCB);
+        instancedParticlesMat.SetBuffer("particlesPos", particlesPosCb);
+        psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesPos", particlesPosCb);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesPos", particlesPosCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesPos", particlesPosCb);
 
         // Particles Velocities gpu buffer setting
-        particlesVelCB = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
-        particlesVelCB.SetData(particlesVel.ToArray());
+        particlesVelCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
+        particlesVelCb.SetData(particlesVel.ToArray());
 
-        PSReactionUpdateCS.SetBuffer(kernelIDReacUpdate, "particlesVel", particlesVelCB);
-        PSScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDScrSpaceColDetc, "particlesVel", particlesVelCB);
-        PSVolumeStructureCollisionDetectionCS.SetBuffer(kernelIDVolStructColDetc, "particlesVel", particlesVelCB);
+        psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesVel", particlesVelCb);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesVel", particlesVelCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesVel", particlesVelCb);
 
         // Particles without screen space collision detection gpu buffer setting
-        particlesWithoutCollisionCB = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
+        particlesWithoutDepthCollisionCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
 
-        PSScreenSpaceCollisionDetectionCS.SetBuffer(kernelIDScrSpaceColDetc, "particlesVel", particlesVelCB);
-        PSVolumeStructureCollisionDetectionCS.SetBuffer(kernelIDVolStructColDetc, "particlesWithoutCollision", particlesWithoutCollisionCB);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
 
         // Depth buffer for depth pre-pass setting
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         depthTexture.Create();
 
-        PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "depthTexture", depthTexture);
+        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetc, "depthTexture", depthTexture);
 
         // Normal buffer for normal pre-pass setting
         normalTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.ARGBFloat);
         normalTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         normalTexture.Create();
 
-        PSScreenSpaceCollisionDetectionCS.SetTexture(kernelIDScrSpaceColDetc, "normalTexture", normalTexture);
+        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetc, "normalTexture", normalTexture);
 
         Stopwatch sw0 = new Stopwatch();
         Stopwatch sw1 = new Stopwatch();
 
         sw0.Start();
 
-        BuildBVHWithMortonCodes();
+        BuildBvhWithMortonCodes();
         sw1.Start();
-        SplitLeafNodesWithSAH();
+        SplitLeafNodesWithSah();
         sw1.Stop();
         sw0.Stop();
-        UnityEngine.Debug.Log("Time to build BVH with " + (numLastLevelBVH + 1) + " levels: " + sw0.Elapsed.TotalSeconds + " seconds");
-        UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBVH - numLevelsBVHMorton + 1) + " levels: " + sw1.Elapsed.TotalSeconds + " seconds");
-        PrintBVHNodes();
+        UnityEngine.Debug.Log("Time to build BVH with " + (numLastLevelBvh + 1) + " levels: " + sw0.Elapsed.TotalSeconds + " seconds");
+        UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBvh - numLevelsBVHMorton + 1) + " levels: " + sw1.Elapsed.TotalSeconds + " seconds");
+        PrintBvhNodes();
         UnityEngine.Debug.Log("Triangles after SAH: " + trisAfterSAH);
+
+        // BVH structure gpu buffer setting
+        bvhCb = new ComputeBuffer(bvh.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu)));
+
+        BvhSphereNodeGpu[] bvhGpu = new BvhSphereNodeGpu[bvh.Count];
+
+        for (int i = 0; i < bvh.Count; i++)
+        {
+            BvhSphereNode node = bvh[i];
+            bvhGpu[i] = new BvhSphereNodeGpu(
+                node.boundingSphere.center, 
+                node.boundingSphere.radius,
+                node.childrenORspan[0],
+                node.childrenORspan[1]);
+        }
+
+        bvhCb.SetData(bvhGpu);
+
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvh", bvhCb);
+
+        // BVH triangles gpu buffer setting
+        bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)));
+
+        BvhTriangleGpu[] trianglesGpu = new BvhTriangleGpu[triangles.Count];
+
+        for(int i = 0; i < triangles.Count; i++)
+        {
+            BvhTriangle tri = triangles[i];
+            trianglesGpu[i] = new BvhTriangleGpu(tri.vertices[0], tri.vertices[1], tri.vertices[2]);
+        }
+
+        bvhTrianglesCb.SetData(trianglesGpu);
+
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhTriangles", bvhTrianglesCb);
     }
 
     // Update is called once per frame
@@ -148,25 +184,25 @@ public class ParticleSys : MonoBehaviour
         NormalPrePass();
         textureImage.texture = depthTexture;
 
-        PSScreenSpaceCollisionDetectionCS.SetMatrix("projectionMat", Camera.main.projectionMatrix);
-        PSScreenSpaceCollisionDetectionCS.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
-        PSScreenSpaceCollisionDetectionCS.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
-        PSScreenSpaceCollisionDetectionCS.SetVector("cameraPos", Camera.main.transform.position);
-        PSScreenSpaceCollisionDetectionCS.SetFloat("particleRadius", particleRadius);
+        psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
+        psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
+        psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
+        psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
+        psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
-        PSScreenSpaceCollisionDetectionCS.SetVector("screenSize", screenRes);
+        psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
 
-        PSScreenSpaceCollisionDetectionCS.Dispatch(kernelIDScrSpaceColDetc, 1/*particlesPos.Count*/, 1, 1);
+        psScreenSpaceCollisionDetectionCs.Dispatch(kernelIdScrSpaceColDetc, 1/*particlesPos.Count*/, 1, 1);
 
         // Volumes Strcuture Particle Collision setting and dispatch
-        PSVolumeStructureCollisionDetectionCS.SetFloat("particleRadius", particleRadius);
+        psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
 
         //PSVolumeStructureCollisionDetectionCS.Dispatch(kernelIDVolStructColDetc, 1 , 1, 1);
 
         // Partcle System reaction update setting and dispatch
-        PSReactionUpdateCS.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
-        PSReactionUpdateCS.Dispatch(kernelIDReacUpdate, 1/*particlesPos.Count*/, 1, 1);
+        psReactionUpdateCs.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
+        psReactionUpdateCs.Dispatch(kernelIdReactUpdate, 1/*particlesPos.Count*/, 1, 1);
 
         // Particles mesh instancing rendering
         RenderParams rp = new RenderParams(instancedParticlesMat);
@@ -180,34 +216,34 @@ public class ParticleSys : MonoBehaviour
         timerResetParticlesPos += Time.deltaTime;
         if (timerResetParticlesPos > 4f)
         {
-            particlesPosCB.SetData(particlesPos.ToArray());
-            particlesVelCB.SetData(particlesVel.ToArray());
+            particlesPosCb.SetData(particlesPos.ToArray());
+            particlesVelCb.SetData(particlesVel.ToArray());
             timerResetParticlesPos = 0;
         }
 
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            BVHNodeLevelToRender = (BVHNodeLevelToRender + 1) % (numLastLevelBVH + 1);
+            bvhNodeLevelToRender = (bvhNodeLevelToRender + 1) % (numLastLevelBvh + 1);
 
-            foreach (GameObject node in sphericalBVHNodes)
+            foreach (GameObject node in sphericalBvhNodes)
                 Destroy(node);
-            sphericalBVHNodes.Clear();
+            sphericalBvhNodes.Clear();
 
-            int numNodes = (int)Mathf.Pow(2f, BVHNodeLevelToRender);
+            int numNodes = (int)Mathf.Pow(2f, bvhNodeLevelToRender);
 
             for (int i = 0; i < numNodes; i++)
             {
-                BVHSphereNode curNode = BVH[numNodes - 1 + i];
-                sphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
-                sphericalBVHNodes.Last().transform.position = curNode.boundingSphere.center;
-                sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
+                BvhSphereNode curNode = bvh[numNodes - 1 + i];
+                sphericalBvhNodes.Add(Instantiate(sphericalNodePrefab));
+                sphericalBvhNodes.Last().transform.position = curNode.boundingSphere.center;
+                sphericalBvhNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
             }
         }
         if (Input.GetKeyDown(KeyCode.C))
         {
-            foreach (GameObject node in sphericalBVHNodes)
+            foreach (GameObject node in sphericalBvhNodes)
                 Destroy(node);
-            sphericalBVHNodes.Clear();
+            sphericalBvhNodes.Clear();
 
             if (isRenderingLeaves)
             {
@@ -220,14 +256,14 @@ public class ParticleSys : MonoBehaviour
 
                 while (toTraverse.Count > 0)
                 {
-                    BVHSphereNode curNode = BVH[toTraverse.Last()];
+                    BvhSphereNode curNode = bvh[toTraverse.Last()];
                     toTraverse.RemoveAt(toTraverse.Count - 1);
 
                     if (curNode.IsLeafNode())
                     {
-                        sphericalBVHNodes.Add(Instantiate(sphericalNodePrefab));
-                        sphericalBVHNodes.Last().transform.position = curNode.boundingSphere.center;
-                        sphericalBVHNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
+                        sphericalBvhNodes.Add(Instantiate(sphericalNodePrefab));
+                        sphericalBvhNodes.Last().transform.position = curNode.boundingSphere.center;
+                        sphericalBvhNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
                     }
                     else
                     {
@@ -241,9 +277,11 @@ public class ParticleSys : MonoBehaviour
 
     void OnDestroy()
     {
-        particlesPosCB?.Release();
-        particlesVelCB?.Release();
-        particlesWithoutCollisionCB?.Release();
+        particlesPosCb?.Release();
+        particlesVelCb?.Release();
+        particlesWithoutDepthCollisionCb?.Release();
+        bvhCb?.Release();
+        bvhTrianglesCb?.Release();
         depthTexture.Release();
         normalTexture.Release();
     }
@@ -330,13 +368,13 @@ public class ParticleSys : MonoBehaviour
         public Vector3 center = Vector3.zero;
         public float radius = 0f;
 
-        public static BoundingSphere Create(List<BVHTriangle> triangles)
+        public static BoundingSphere Create(List<BvhTriangle> triangles)
         {
             BoundingSphere bs = new BoundingSphere();
             bs.center = Vector3.zero;
             bs.radius = 0f;
             int count = 0;
-            foreach (BVHTriangle tri in triangles)
+            foreach (BvhTriangle tri in triangles)
             {
                 for (int v = 0; v < 3; v++)
                 {
@@ -345,10 +383,10 @@ public class ParticleSys : MonoBehaviour
                 }
             }
 
-            BVHTriangle mostDistTri = new();
+            BvhTriangle mostDistTri = new();
             int mostDistVert = 0;
             float maxDist = 0f;
-            foreach (BVHTriangle tri in triangles)
+            foreach (BvhTriangle tri in triangles)
             {
                 for (int v = 0; v < 3; v++)
                 {
@@ -375,13 +413,13 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    class BVHTriangle : IComparable<BVHTriangle>
+    class BvhTriangle : IComparable<BvhTriangle>
     {
         public Vector3[] vertices = new Vector3[3];
         public Vector3 centroid = Vector3.zero;
         public int mortonCode = 0;
 
-        public int CompareTo(BVHTriangle other)
+        public int CompareTo(BvhTriangle other)
         {
             if(other == null) return 1;
 
@@ -389,18 +427,33 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    class BVHSphereNode
+    [System.Serializable]
+    struct BvhTriangleGpu
     {
-        public BoundingSphere boundingSphere;
+        private Vector3 vert0;
+        private Vector3 vert1;
+        private Vector3 vert2;
+
+        public BvhTriangleGpu(Vector3 v0, Vector3 v1, Vector3 v2)
+        {
+            vert0 = v0;
+            vert1 = v1;
+            vert2 = v2;
+        }
+    }
+
+    class BvhSphereNode
+    {
+        public BoundingSphere boundingSphere = new();
         // If the node is a leaf node the first element is the index to the first triangle
         // of the scence's triangle list but negative and the second element is the number
         // of triangles encompassed by the bvh node. Otherwise the two elements are indices
         // to child nodes
         public int[] childrenORspan = new int[2] { 0, 0 };
 
-        public static BVHSphereNode CreateNodeFromTriangles(List<BVHTriangle> triangles)
+        public static BvhSphereNode CreateNodeFromTriangles(List<BvhTriangle> triangles)
         {
-            BVHSphereNode node = new()
+            BvhSphereNode node = new()
             {
                 boundingSphere = BoundingSphere.Create(triangles)
             };
@@ -429,19 +482,35 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
+    struct BvhSphereNodeGpu
+    {
+        private Vector3 center;
+        private float radius;
+        private int childOrStartNegated;
+        private int childOrSize;
+
+        public BvhSphereNodeGpu(Vector3 center, float radius, int childOrStartNegated, int childOrSize)
+        {
+            this.center = center;
+            this.radius = radius;
+            this.childOrStartNegated = childOrStartNegated;
+            this.childOrSize = childOrSize;
+        }
+    };
+
     class TrianglesSpan
     {
-        public List<BVHTriangle> triangles = new();
+        public List<BvhTriangle> triangles = new();
         public int firstElementIndex = -1;
     }
     
-    private TrianglesSpan GetTrianglesInMortonCodeSpan(List<BVHTriangle> triangles, int minInclusive, int maxExclusive)
+    private TrianglesSpan GetTrianglesInMortonCodeSpan(List<BvhTriangle> triangles, int minInclusive, int maxExclusive)
     {
         TrianglesSpan span = new TrianglesSpan();
 
         if (triangles.Count > 0) span.firstElementIndex = 0;
 
-        foreach (BVHTriangle tri in triangles)
+        foreach (BvhTriangle tri in triangles)
         {
             if(tri.mortonCode < minInclusive)
             {
@@ -460,7 +529,7 @@ public class ParticleSys : MonoBehaviour
         return span;
     }
 
-    void BuildBVHWithMortonCodes()
+    void BuildBvhWithMortonCodes()
     {
         BoundingBox box = new BoundingBox();
 
@@ -482,7 +551,7 @@ public class ParticleSys : MonoBehaviour
 
                     if (vertexIndex >= 3)
                     {
-                        triangles.Add(new BVHTriangle());
+                        triangles.Add(new BvhTriangle());
                         vertexIndex = 0;
                     }
                     triangles.Last().vertices[vertexIndex++] = vertex;
@@ -490,7 +559,7 @@ public class ParticleSys : MonoBehaviour
             }
         }
 
-        foreach(BVHTriangle t in triangles)
+        foreach(BvhTriangle t in triangles)
         {
             t.centroid = (t.vertices[0] + t.vertices[1] + t.vertices[2]) / 3f;
         }
@@ -500,7 +569,7 @@ public class ParticleSys : MonoBehaviour
 
         UnityEngine.Debug.Log("Number of triangles: " +  triangles.Count);
 
-        foreach(BVHTriangle tri in triangles)
+        foreach(BvhTriangle tri in triangles)
         {
             tri.mortonCode = BoundingBox.TriangleMortonCode(tri.vertices.ToList(), box);
         }
@@ -516,14 +585,14 @@ public class ParticleSys : MonoBehaviour
                 if (i == 0)
                 {
                     TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, 0, cutValues[i]);
-                    BVH.Add(BVHSphereNode.CreateNodeFromTriangles(triSpan.triangles));
-                    BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
+                    bvh.Add(BvhSphereNode.CreateNodeFromTriangles(triSpan.triangles));
+                    bvh.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
                 else
                 {
                     TrianglesSpan triSpan = GetTrianglesInMortonCodeSpan(triangles, cutValues[i - 1], cutValues[i]);
-                    BVH.Add(BVHSphereNode.CreateNodeFromTriangles(triSpan.triangles));
-                    BVH.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
+                    bvh.Add(BvhSphereNode.CreateNodeFromTriangles(triSpan.triangles));
+                    bvh.Last().childrenORspan = new int[2] { -triSpan.firstElementIndex, triSpan.triangles.Count };
                 }
             }
 
@@ -538,30 +607,30 @@ public class ParticleSys : MonoBehaviour
             cutValues.Sort();
         }
 
-        for (int i = 0; i < BVH.Count; i++)
+        for (int i = 0; i < bvh.Count; i++)
         {
             int[] childrenIndices = new int[2] { 2 * i + 1, 2 * i + 2 };
 
-            if (BVH.Count <= childrenIndices[1]) break;
+            if (bvh.Count <= childrenIndices[1]) break;
 
-            if (BVH[childrenIndices[0]].childrenORspan[1] > 0 &&
-                BVH[childrenIndices[1]].childrenORspan[1] > 0)
+            if (bvh[childrenIndices[0]].childrenORspan[1] > 0 &&
+                bvh[childrenIndices[1]].childrenORspan[1] > 0)
             {
-                BVH[i].childrenORspan = childrenIndices;
+                bvh[i].childrenORspan = childrenIndices;
             }
         }
     }
 
-    private void SplitLeafNodesWithSAH(int maxTrisPerBVHNode = maxTrisPerBVHNode)
+    private void SplitLeafNodesWithSah(int maxTrisPerBVHNode = maxTrisPerBvhNode)
     {
-        for (int nodeLevel = numLevelsBVHMorton; nodeLevel <= maxLevelBVH; nodeLevel++)
+        for (int nodeLevel = numLevelsBVHMorton; nodeLevel <= maxLevelBvh; nodeLevel++)
         {
             int levelNodeCount = Mathf.CeilToInt(Mathf.Pow(2f, nodeLevel));
-            if (BVH.Count < levelNodeCount)
+            if (bvh.Count < levelNodeCount)
             {
                 for (int i = 0; i < levelNodeCount; i++)
                 {
-                    BVH.Add(new BVHSphereNode());
+                    bvh.Add(new BvhSphereNode());
                 }
             }
         }
@@ -572,18 +641,18 @@ public class ParticleSys : MonoBehaviour
         {
             int nodeIndex = nodesToTraverse.Last();
             nodesToTraverse.RemoveAt(nodesToTraverse.Count - 1);
-            BVHSphereNode curNode = BVH[nodeIndex];
+            BvhSphereNode curNode = bvh[nodeIndex];
 
             if (curNode.IsLeafNode())
             {
                 int nodeLevel = Mathf.FloorToInt(Mathf.Log(nodeIndex + 1f, 2f));
-                numLastLevelBVH = Mathf.Max(numLastLevelBVH, nodeLevel);
-                if (curNode.TrisCount() > maxTrisPerBVHNode && nodeLevel < maxLevelBVH)
+                numLastLevelBvh = Mathf.Max(numLastLevelBvh, nodeLevel);
+                if (curNode.TrisCount() > maxTrisPerBVHNode && nodeLevel < maxLevelBvh)
                 {
                     // Sample random triangle indices contained inside the current leaf node to evaluate SAH
                     List<int> trisSamples = new List<int>();
 
-                    if (curNode.TrisCount() <= maxSAHSamples)
+                    if (curNode.TrisCount() <= maxSahSamples)
                     {
                         for (int i = 0; i < curNode.TrisCount(); i++)
                         {
@@ -592,15 +661,15 @@ public class ParticleSys : MonoBehaviour
                     }
                     else
                     {
-                        int bucketSize = Mathf.FloorToInt((float)curNode.TrisCount() / maxSAHSamples);
+                        int bucketSize = Mathf.FloorToInt((float)curNode.TrisCount() / maxSahSamples);
 
-                        for (int i = 0; i < maxSAHSamples - 1; i++)
+                        for (int i = 0; i < maxSahSamples - 1; i++)
                         {
                             int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * bucketSize), bucketSize-1);
                             trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt((bucketSize * i) + randomOffset));
                         }
                         {
-                            int startIndexLastBucket = bucketSize * (maxSAHSamples - 1);
+                            int startIndexLastBucket = bucketSize * (maxSahSamples - 1);
                             int lastBucketSize = curNode.TrisCount() - startIndexLastBucket;
                             int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * lastBucketSize), lastBucketSize - 1);
                             trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt(randomOffset + startIndexLastBucket));
@@ -612,11 +681,11 @@ public class ParticleSys : MonoBehaviour
                     float bestPos = 0f, bestCost = float.MaxValue;
                     foreach (int indexSample in trisSamples)
                     {
-                        BVHTriangle triangle = triangles[indexSample];
+                        BvhTriangle triangle = triangles[indexSample];
                         for (int axis = 0; axis < 3; axis++)
                         {
                             float candidatePos = triangle.centroid[axis];
-                            float cost = EvaluateSAH(curNode, axis, candidatePos);
+                            float cost = EvaluateSah(curNode, axis, candidatePos);
                             if (cost < bestCost)
                             {
                                 bestPos = candidatePos;
@@ -633,14 +702,14 @@ public class ParticleSys : MonoBehaviour
 
                     int childIndex = 2 * nodeIndex + 1;
 
-                    List<BVHTriangle> childTris = triangles.GetRange(curNode.FirstTriIndex(), partIndex - curNode.FirstTriIndex());
-                    BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
-                    BVH[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
+                    List<BvhTriangle> childTris = triangles.GetRange(curNode.FirstTriIndex(), partIndex - curNode.FirstTriIndex());
+                    bvh[childIndex] = BvhSphereNode.CreateNodeFromTriangles(childTris);
+                    bvh[childIndex].childrenORspan = new int[2] { -curNode.FirstTriIndex(), childTris.Count };
 
                     childIndex++;
                     childTris = triangles.GetRange(partIndex, curNode.TrisCount() - childTris.Count);
-                    BVH[childIndex] = BVHSphereNode.CreateNodeFromTriangles(childTris);
-                    BVH[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
+                    bvh[childIndex] = BvhSphereNode.CreateNodeFromTriangles(childTris);
+                    bvh[childIndex].childrenORspan = new int[2] { -partIndex, childTris.Count };
 
                     curNode.childrenORspan = new int[2] { 2 * nodeIndex + 1, 2 * nodeIndex + 2 };
 
@@ -656,14 +725,14 @@ public class ParticleSys : MonoBehaviour
         }
     }
 
-    float EvaluateSAH(BVHSphereNode node, int axis, float pos)
+    float EvaluateSah(BvhSphereNode node, int axis, float pos)
     {
         // determine triangle counts and bounds for this split candidate
-        List<BVHTriangle> tris0 = new(), tris1 = new();
+        List<BvhTriangle> tris0 = new(), tris1 = new();
         int count0 = 0, count1 = 0;
         for (int i = node.FirstTriIndex(); i < node.LastTriIndexExclusive(); i++)
         {
-            BVHTriangle tri = triangles[i];
+            BvhTriangle tri = triangles[i];
             if (tri.centroid[axis] < pos)
             {
                 count0++;
@@ -682,7 +751,7 @@ public class ParticleSys : MonoBehaviour
         return cost > 0f ? cost : float.MaxValue;
     }
 
-    private static int Partition(List<BVHTriangle> tris, int axis, float pos, int startIndex, int count)
+    private static int Partition(List<BvhTriangle> tris, int axis, float pos, int startIndex, int count)
     {
         // Ensure valid subset range
         int endIndex = Mathf.Min(startIndex + count, tris.Count);
@@ -708,9 +777,9 @@ public class ParticleSys : MonoBehaviour
 
     private int trisAfterSAH = 0;
 
-    private void PrintBVHNodes(int nodeIndex = 0, int nodeLevel = 0)
+    private void PrintBvhNodes(int nodeIndex = 0, int nodeLevel = 0)
     {
-        if (nodeIndex >= BVH.Count) return;
+        if (nodeIndex >= bvh.Count) return;
 
         string offset = "";
 
@@ -719,7 +788,7 @@ public class ParticleSys : MonoBehaviour
             offset += "    ";
         }
 
-        BVHSphereNode curNode = BVH[nodeIndex];
+        BvhSphereNode curNode = bvh[nodeIndex];
 
         if (curNode.childrenORspan[0] <= 0)
         {
@@ -729,8 +798,8 @@ public class ParticleSys : MonoBehaviour
         else
         {
             UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.boundingSphere.center);
-            PrintBVHNodes(2 * nodeIndex + 1, nodeLevel + 1);
-            PrintBVHNodes(2 * nodeIndex + 2, nodeLevel + 1);
+            PrintBvhNodes(2 * nodeIndex + 1, nodeLevel + 1);
+            PrintBvhNodes(2 * nodeIndex + 2, nodeLevel + 1);
         }
     }
 }
