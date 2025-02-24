@@ -65,6 +65,12 @@ public class ParticleSys : MonoBehaviour
     private int bvhNodeLevelToRender = -1;
     private bool isRenderingLeaves = false;
 
+    private List<BvhAabbNode> octree = new();
+    private const int numLevelsOctreeMorton = 6;
+    private const int maxLevelOctree = 16;
+    private const int maxTrisPerOctreeNode = 32;
+    private int numLastLevelOctree = 0;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -531,50 +537,7 @@ public class ParticleSys : MonoBehaviour
 
     void BuildBvhWithMortonCodes()
     {
-        BoundingBox box = new BoundingBox();
-
-        // Find all GameObjects in the scene
-        List<GameObject> allObjects = FindObjectsOfType<GameObject>().ToList();
-        
-        // Iterate through each GameObject and get its MeshFilter component
-        foreach (GameObject obj in allObjects)
-        {
-            if (obj.TryGetComponent(out MeshFilter meshFilter))
-            {
-                Mesh mesh = meshFilter.sharedMesh;
-                if (!mesh) continue;
-                int vertexIndex = 3;
-                foreach (int i in mesh.triangles)
-                {
-                    Vector3 vertex = obj.transform.TransformPoint(mesh.vertices[i]);
-                    box.ScaleToInclude(vertex);
-
-                    if (vertexIndex >= 3)
-                    {
-                        triangles.Add(new BvhTriangle());
-                        vertexIndex = 0;
-                    }
-                    triangles.Last().vertices[vertexIndex++] = vertex;
-                }
-            }
-        }
-
-        foreach(BvhTriangle t in triangles)
-        {
-            t.centroid = (t.vertices[0] + t.vertices[1] + t.vertices[2]) / 3f;
-        }
-
-        box.center = (box.max + box.min) * 0.5f;
-        box.length = (box.max - box.min);
-
-        UnityEngine.Debug.Log("Number of triangles: " +  triangles.Count);
-
-        foreach(BvhTriangle tri in triangles)
-        {
-            tri.mortonCode = BoundingBox.TriangleMortonCode(tri.vertices.ToList(), box);
-        }
-
-        triangles.Sort();
+        triangles = GetBvhTrianglesSortedWithMortonCodes();
 
         List<int> cutValues = new(){ 1 << 30 };
 
@@ -619,6 +582,58 @@ public class ParticleSys : MonoBehaviour
                 bvh[i].childrenORspan = childrenIndices;
             }
         }
+    }
+
+    List<BvhTriangle> GetBvhTrianglesSortedWithMortonCodes()
+    {
+        BoundingBox box = new BoundingBox();
+
+        List<BvhTriangle> triangles = new();
+
+        // Find all GameObjects in the scene
+        List<GameObject> allObjects = FindObjectsOfType<GameObject>().ToList();
+
+        // Iterate through each GameObject and get its MeshFilter component
+        foreach (GameObject obj in allObjects)
+        {
+            if (obj.TryGetComponent(out MeshFilter meshFilter))
+            {
+                Mesh mesh = meshFilter.sharedMesh;
+                if (!mesh) continue;
+                int vertexIndex = 3;
+                foreach (int i in mesh.triangles)
+                {
+                    Vector3 vertex = obj.transform.TransformPoint(mesh.vertices[i]);
+                    box.ScaleToInclude(vertex);
+
+                    if (vertexIndex >= 3)
+                    {
+                        triangles.Add(new BvhTriangle());
+                        vertexIndex = 0;
+                    }
+                    triangles.Last().vertices[vertexIndex++] = vertex;
+                }
+            }
+        }
+
+        foreach (BvhTriangle t in triangles)
+        {
+            t.centroid = (t.vertices[0] + t.vertices[1] + t.vertices[2]) / 3f;
+        }
+
+        box.center = (box.max + box.min) * 0.5f;
+        box.length = (box.max - box.min);
+
+        UnityEngine.Debug.Log("Number of triangles: " + triangles.Count);
+
+        foreach (BvhTriangle tri in triangles)
+        {
+            tri.mortonCode = BoundingBox.TriangleMortonCode(tri.vertices.ToList(), box);
+        }
+
+        triangles.Sort();
+
+        return triangles;
     }
 
     private void SplitLeafNodesWithSah(int maxTrisPerBVHNode = maxTrisPerBvhNode)
@@ -801,5 +816,82 @@ public class ParticleSys : MonoBehaviour
             PrintBvhNodes(2 * nodeIndex + 1, nodeLevel + 1);
             PrintBvhNodes(2 * nodeIndex + 2, nodeLevel + 1);
         }
+    }
+
+    private class Aabb
+    {
+        public Vector3 min = Vector3.positiveInfinity;
+        public Vector3 max = Vector3.negativeInfinity;
+
+        public void ScaleToInclude(Vector3 point)
+        {
+            min = Vector3.Min(min, point - Vector3.one * 0.01f);
+            max = Vector3.Max(max, point + Vector3.one * 0.01f);
+        }
+
+        public void ScaleToInclude(BvhTriangle triangle)
+        {
+            foreach (Vector3 vertex in triangle.vertices)
+            {
+                ScaleToInclude(vertex);
+            }
+        }
+
+        public static Aabb Create(List<BvhTriangle> triangles)
+        {
+            Aabb aabb = new Aabb();
+
+            foreach (BvhTriangle tri in triangles)
+            {
+                aabb.ScaleToInclude(tri);
+            }
+
+            return aabb;
+        }
+    }
+
+    class BvhAabbNode
+    {
+        public Aabb aabb = new();
+        // If the node is a leaf node the first element is the index to the first triangle
+        // of the scence's triangle list but negative and the second element is the number
+        // of triangles encompassed by the bvh node. Otherwise the two elements are indices
+        // to child nodes
+        public int[] childrenORspan = new int[2] { 0, 0 };
+
+        public static BvhAabbNode CreateNodeFromTriangles(List<BvhTriangle> triangles)
+        {
+            BvhAabbNode node = new()
+            {
+                aabb = Aabb.Create(triangles)
+            };
+
+            return node;
+        }
+
+        public bool IsLeafNode()
+        {
+            return childrenORspan[0] <= 0;
+        }
+
+        public int FirstTriIndex()
+        {
+            return Mathf.Abs(childrenORspan[0]);
+        }
+
+        public int LastTriIndexExclusive()
+        {
+            return Mathf.Abs(childrenORspan[0]) + childrenORspan[1];
+        }
+
+        public int TrisCount()
+        {
+            return childrenORspan[1];
+        }
+    }
+
+    void BuildOctreeWithMortonCodes()
+    {
+        triangles = GetBvhTrianglesSortedWithMortonCodes();
     }
 }
