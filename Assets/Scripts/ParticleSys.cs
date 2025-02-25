@@ -20,6 +20,9 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private ComputeShader psVolumeStructureCollisionDetectionCs;
     private int kernelIdVolStructColDetc;
+    [SerializeField]
+    private ComputeShader fillBufferCs;
+    private int kernelIdFillBuffer;
 
     [SerializeField]
     private Material instancedParticlesMat;
@@ -37,7 +40,10 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer particlesPosCb;
     private ComputeBuffer particlesVelCb;
     private ComputeBuffer particlesWithoutDepthCollisionCb;
+    private ComputeBuffer counterBuffer;
     private ComputeBuffer bvhCb;
+    private ComputeBuffer bvhStackCb; // Stack to hold nodes to be visited
+    private ComputeBuffer bvhStackIndicesCb; // Per-thread index for stack handling
     private ComputeBuffer bvhTrianglesCb;
     //private ComputeBuffer particlesInitPosCB;
     //private ComputeBuffer particlesAliveTimeCB;
@@ -71,6 +77,9 @@ public class ParticleSys : MonoBehaviour
     private const int maxTrisPerOctreeNode = 32;
     private int numLastLevelOctree = 0;
 
+    private const int threadGroupSize = 32;
+    private const int bvhStackSizePerThread = 64;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -94,10 +103,11 @@ public class ParticleSys : MonoBehaviour
         kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
         kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
         kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
+        kernelIdFillBuffer = fillBufferCs.FindKernel("FillBuffer");
 
         // Particles Positions gpu buffer setting
-        particlesPosCb = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3);
-        particlesPosCb.SetData(particlesPos.ToArray());
+        particlesPosCb = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
+        particlesPosCb.SetData(particlesPos);
 
         instancedParticlesMat.SetBuffer("particlesPos", particlesPosCb);
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesPos", particlesPosCb);
@@ -105,18 +115,22 @@ public class ParticleSys : MonoBehaviour
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesPos", particlesPosCb);
 
         // Particles Velocities gpu buffer setting
-        particlesVelCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
-        particlesVelCb.SetData(particlesVel.ToArray());
+        particlesVelCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3, ComputeBufferType.Structured);
+        particlesVelCb.SetData(particlesVel);
 
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesVel", particlesVelCb);
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesVel", particlesVelCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesVel", particlesVelCb);
 
         // Particles without screen space collision detection gpu buffer setting
-        particlesWithoutDepthCollisionCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3);
+        particlesWithoutDepthCollisionCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3, ComputeBufferType.Append);
+        particlesWithoutDepthCollisionCb.SetCounterValue(0);
 
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
+        fillBufferCs.SetBuffer(kernelIdFillBuffer, "buffer", particlesWithoutDepthCollisionCb);
+
+        counterBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
         // Depth buffer for depth pre-pass setting
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
@@ -148,7 +162,7 @@ public class ParticleSys : MonoBehaviour
         UnityEngine.Debug.Log("Triangles after SAH: " + trisAfterSAH);
 
         // BVH structure gpu buffer setting
-        bvhCb = new ComputeBuffer(bvh.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu)));
+        bvhCb = new ComputeBuffer(bvh.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu)), ComputeBufferType.Structured);
 
         BvhSphereNodeGpu[] bvhGpu = new BvhSphereNodeGpu[bvh.Count];
 
@@ -166,8 +180,18 @@ public class ParticleSys : MonoBehaviour
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvh", bvhCb);
 
+        // Stack for bvh nodes gpu buffer setting
+        bvhStackCb = new ComputeBuffer(particlesPos.Count * bvhStackSizePerThread, sizeof(int), ComputeBufferType.Structured);
+
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStack", bvhStackCb);
+
+        // Stack indices of each thread gpu buffer setting
+        bvhStackIndicesCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
+
         // BVH triangles gpu buffer setting
-        bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)));
+        bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)), ComputeBufferType.Structured);
 
         BvhTriangleGpu[] trianglesGpu = new BvhTriangleGpu[triangles.Count];
 
@@ -199,12 +223,23 @@ public class ParticleSys : MonoBehaviour
         Vector2 screenRes = new(Screen.width, Screen.height);
         psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
 
-        psScreenSpaceCollisionDetectionCs.Dispatch(kernelIdScrSpaceColDetc, 1/*particlesPos.Count*/, 1, 1);
+        psScreenSpaceCollisionDetectionCs.Dispatch(kernelIdScrSpaceColDetc, 1, 1, 1);
 
-        // Volumes Strcuture Particle Collision setting and dispatch
+        // Filling the particlesWithoutDepthCollision buffer to align with the thread group size
+
+        GraphicsBuffer.CopyCount(particlesWithoutDepthCollisionCb, counterBuffer, 0);
+
+        int[] countArray = new int[1];
+        counterBuffer.GetData(countArray);
+        int numElementsToFill = threadGroupSize - (countArray[0] % threadGroupSize);
+        fillBufferCs.SetInt("numElements", numElementsToFill);
+
+        fillBufferCs.Dispatch(kernelIdFillBuffer, 1, 1, 1);
+
+        // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
 
-        //PSVolumeStructureCollisionDetectionCS.Dispatch(kernelIDVolStructColDetc, 1 , 1, 1);
+        psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, 1 , 1, 1);
 
         // Partcle System reaction update setting and dispatch
         psReactionUpdateCs.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
@@ -218,6 +253,8 @@ public class ParticleSys : MonoBehaviour
             instData[i] = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, particleRadius * 2f * Vector3.one);
 
         Graphics.RenderMeshInstanced(rp, particleMesh, 0, instData);
+
+        particlesWithoutDepthCollisionCb.SetCounterValue(0);
 
         timerResetParticlesPos += Time.deltaTime;
         if (timerResetParticlesPos > 4f)

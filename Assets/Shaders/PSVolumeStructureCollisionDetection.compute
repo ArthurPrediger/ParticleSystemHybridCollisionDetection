@@ -1,6 +1,9 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSVolumeStructureCollisionDetection
 
+// Maximum stack depth
+#define MAX_STACK_SIZE 64
+
 struct BvhSphereNode
 {
     float3 center;
@@ -15,6 +18,8 @@ struct BvhTriangle
 };
 
 RWStructuredBuffer<BvhSphereNode> bvh;
+RWStructuredBuffer<int> bvhStack; // Stack to hold nodes to be visited
+RWStructuredBuffer<int> bvhStackIndices; // Per-thread index for stack handling
 RWStructuredBuffer<BvhTriangle> bvhTriangles;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
@@ -23,7 +28,41 @@ float particleRadius;
 float deltaTime;
 
 [numthreads(16,1,1)]
-void PSVolumeStructureCollisionDetection (uint3 id : SV_DispatchThreadID)
+void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
+    int particleIndex = particlesWithoutDepthCollision.Consume();
+    
+    if (particleIndex == -1)
+        return;
+    
+    uint threadId = id.x;
+    uint stackBase = threadId * MAX_STACK_SIZE;
+    
+    bvhStackIndices[threadId] = 0;
+    bvhStack[stackBase + bvhStackIndices[threadId]++] = 0; // Push root node onto stack
+    
+    while (bvhStackIndices[threadId] > 0)
+    {
+        int nodeIndex = bvhStack[stackBase + --bvhStackIndices[threadId]];
+        BvhSphereNode node = bvh[nodeIndex];
+        
+        float3 particlePos = particlesPos[particleIndex];
 
+        if (distance(particlePos, node.center) < (particleRadius + node.radius)) // Intersection test with the AABB
+        {
+            if (node.childOrStartNegated > 0)
+            {
+                // Push children onto the stack
+                bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+            }
+            else
+            {
+                for (int i = 0; i < node.childOrSize; i++)
+                {
+                    
+                }
+            }
+        }
+    }
 }

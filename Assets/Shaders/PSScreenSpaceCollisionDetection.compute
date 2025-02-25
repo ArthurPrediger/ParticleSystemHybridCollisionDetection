@@ -46,6 +46,6 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        //particlesWithoutDepthCollision.Append(id.x);
+        particlesWithoutDepthCollision.Append(id.x);
     }
 }
