@@ -27,6 +27,92 @@ ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
 
+bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node, out float3 collisionPoint)
+{
+    float3 partInitPos = particlesPos[particleIndex];
+    float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
+    float3 partVel = particlesVel[particleIndex];
+    float3 partDir = normalize(particlesVel[particleIndex]);
+
+    float radiusSum = particleRadius + node.radius;
+    
+    float3 partToNode = node.center - partInitPos;
+    float intoPartDir = dot(partToNode, partDir);
+    
+    float disc = (radiusSum * radiusSum) - (dot(partToNode, partToNode) - intoPartDir * intoPartDir);
+    
+    collisionPoint = float3(0, 0, 0);
+    
+    if (disc < 0 || disc > dot(partVel, partVel))
+        return false;
+    
+    float d = sqrt(disc);
+    collisionPoint = partInitPos + (intoPartDir - d) * partVel;
+    
+    return true;
+}
+
+bool RayTriangleIntersection(float3 rayOrigin, float3 rayDir, float3 v0, float3 v1, float3 v2, out float3 collisionPoint)
+{
+    collisionPoint = float3(1, 1, 1);
+    return true;
+}
+
+bool RayCylinderIntersection(float3 rayOrigin, float3 rayDir, float3 baseCenter, float3 axisDir, float height, float radius, out float3 collisionPoint)
+{
+    collisionPoint = float3(1, 1, 1);
+    return true;
+}
+
+bool RaySphereIntersection(float3 rayOrigin, float3 rayDir, float3 center, float radius, out float3 collisionPoint)
+{
+    collisionPoint = float3(1, 1, 1);
+    return true;
+}
+
+bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3 collisionPoint)
+{   
+    float3 partInitPos = particlesPos[particleIndex];
+    float3 particleVel = particlesVel[particleIndex];
+    float3 particleDir = normalize(particlesVel[particleIndex]);
+    
+    float3 triNormal = normalize(cross((tri.vertices[1] - tri.vertices[0]), (tri.vertices[2] - tri.vertices[0])));
+    
+    if (dot(triNormal, particlesVel[particleIndex]) > 0)
+        triNormal = -triNormal;
+    
+    float3 triOffset = triNormal * particleRadius;
+    
+    float3 v0 = tri.vertices[0] + triOffset, v1 = tri.vertices[1] + triOffset, v2 = tri.vertices[2] + triOffset;
+    
+    if (RayTriangleIntersection(partInitPos, particleDir, v0, v1, v2, collisionPoint))
+    {
+        return true;
+    }
+    
+    for (uint i = 0; i < 3; i++)
+    {
+        float3 cylinderAxisDir = (tri.vertices[(i + 1) % 3] - tri.vertices[i]);
+        float cylinderHeight = distance(tri.vertices[(i + 1) % 3], tri.vertices[i]);
+        
+        if (RayCylinderIntersection(partInitPos, particleDir, tri.vertices[i], cylinderAxisDir, cylinderHeight, particleRadius, collisionPoint))
+        {
+            return true;
+        }
+    }
+    
+    for (uint j = 0; j < 3; j++)
+    {
+        if (RaySphereIntersection(partInitPos, particleDir, tri.vertices[i], particleRadius, collisionPoint))
+        {
+            return true;
+        }
+    }
+        
+    collisionPoint = float3(0, 0, 0);
+    return false;
+}
+
 [numthreads(16,1,1)]
 void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
@@ -45,22 +131,60 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
     {
         int nodeIndex = bvhStack[stackBase + --bvhStackIndices[threadId]];
         BvhSphereNode node = bvh[nodeIndex];
-        
-        float3 particlePos = particlesPos[particleIndex];
 
-        if (distance(particlePos, node.center) < (particleRadius + node.radius)) // Intersection test with the AABB
+        float3 collisionPoint;
+        
+        if (ParticleSphereIntersection(particleIndex, node, collisionPoint)) // Intersection test with the AABB
         {
+            float3 partInitPos = particlesPos[particleIndex];
+            
             if (node.childOrStartNegated > 0)
             {
+                BvhSphereNode child0 = bvh[node.childOrStartNegated];
+                BvhSphereNode child1 = bvh[node.childOrSize];
+                
+                float3 vecToChild0 = child0.center - partInitPos;
+                float3 vecToChild1 = child1.center - partInitPos;
+                
                 // Push children onto the stack
-                bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
-                bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                if (dot(vecToChild0, vecToChild0) < dot(vecToChild1, vecToChild1))
+                {
+                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                }
+                else
+                {
+                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                }
             }
             else
             {
+                BvhTriangle collisionTri;
+                float3 collisionPoint = float3(1, 1, 1) * 1000000;
+                float3 curCollisionPoint;
                 for (int i = 0; i < node.childOrSize; i++)
                 {
+                    BvhTriangle tri = bvhTriangles[-node.childOrStartNegated + i];
                     
+                    if (ParticleTriangleIntersection(particleIndex, tri, curCollisionPoint))
+                    {
+                        if (distance(partInitPos, curCollisionPoint) < distance(partInitPos, collisionPoint))
+                        {
+                            collisionPoint = curCollisionPoint;
+                            collisionTri = tri;
+                        }
+                    }
+                    
+                    float3 triNormal = normalize(cross(
+                        (collisionTri.vertices[1] - collisionTri.vertices[0]),
+                        (collisionTri.vertices[2] - collisionTri.vertices[0])));
+
+                    if (dot(triNormal, particlesVel[particleIndex]) > 0)
+                        triNormal = -triNormal;
+
+                    particlesPos[particleIndex] = collisionPoint + triNormal * 0.01f;
+                    particlesVel[particleIndex] = normalize(reflect(normalize(particlesVel[particleIndex]), triNormal)) * 8;
                 }
             }
         }
