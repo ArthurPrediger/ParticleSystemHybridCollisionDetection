@@ -239,7 +239,7 @@ public class ParticleSys : MonoBehaviour
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
 
-        psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, 1 , 1, 1);
+        psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, 1, 1, 1);
 
         // Partcle System reaction update setting and dispatch
         psReactionUpdateCs.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
