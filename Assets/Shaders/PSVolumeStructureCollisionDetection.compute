@@ -2,7 +2,7 @@
 #pragma kernel PSVolumeStructureCollisionDetection
 
 //Maximum stackdepth
-#define MAX_STACK_SIZE 64
+#define MAX_STACK_SIZE 128
 #define FLOAT_MAX 1.0e38
 
 struct BvhSphereNode
@@ -27,8 +27,9 @@ RWStructuredBuffer<float3> particlesVel;
 ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
+bool isActive;
 
-bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node, out float3 collisionPoint)
+bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
 {
     float3 partInitPos = particlesPos[particleIndex];
     float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
@@ -42,13 +43,16 @@ bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node, out float
     
     float disc = (radiusSum * radiusSum) - (dot(partToNode, partToNode) - intoPartDir * intoPartDir);
     
-    collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
+    float3 collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
     
-    if (disc < 0 || disc > dot(partVel, partVel))
+    if (disc < 0)
         return false;
     
     float d = sqrt(disc);
-    collisionPoint = partInitPos + (intoPartDir - d) * partVel;
+    collisionPoint = partInitPos + (intoPartDir - d) * partDir;
+    
+    //if (distance(partInitPos, partEndPos) < distance(partInitPos, collisionPoint))
+    //    return false;
     
     return true;
 }
@@ -204,6 +208,9 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
     int particleIndex = particlesWithoutDepthCollision.Consume();
     
+    if(!isActive)
+        return;
+    
     if (particleIndex == -1)
         return;
     
@@ -217,12 +224,11 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
     {
         int nodeIndex = bvhStack[stackBase + --bvhStackIndices[threadId]];
         BvhSphereNode node = bvh[nodeIndex];
-
-        float3 collisionPoint;
         
-        if (ParticleSphereIntersection(particleIndex, node, collisionPoint)) // Intersection test with the AABB
+        if (ParticleSphereIntersection(particleIndex, node))
         {
             float3 partInitPos = particlesPos[particleIndex];
+            float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
             float3 partDir = normalize(particlesVel[particleIndex]);
             
             if (node.childOrStartNegated > 0)
@@ -246,7 +252,7 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
                 }
             }
             else
-            {
+            {               
                 BvhTriangle collisionTri;
                 float3 collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
                 bool collided = false;
@@ -276,6 +282,8 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 
                     particlesPos[particleIndex] = collisionPoint + triNormal * 0.01f;
                     particlesVel[particleIndex] = normalize(reflect(normalize(particlesVel[particleIndex]), triNormal)) * 8;
+                    
+                    break;
                 }
             }
         }

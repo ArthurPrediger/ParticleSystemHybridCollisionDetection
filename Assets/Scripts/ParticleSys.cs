@@ -77,16 +77,19 @@ public class ParticleSys : MonoBehaviour
     private const int maxTrisPerOctreeNode = 32;
     private int numLastLevelOctree = 0;
 
-    private const int threadGroupSize = 32;
-    private const int bvhStackSizePerThread = 64;
+    private const int threadGroupSize = 16;
+    private const int bvhStackSizePerThread = 128;
+
+    private bool isScreenSpaceCollisionActive = true;
+    private bool isVolumeStructureCollisionActive = true;
 
     // Start is called before the first frame update
     void Start()
     {
         instancedParticlesMat.enableInstancing = true;
         Camera.main.depthTextureMode = DepthTextureMode.Depth;
-        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
-        meshRenderer.enabled = false;
+        GetComponent<MeshRenderer>().enabled = false;
+        GetComponent<MeshFilter>().mesh = null;
 
         Vector3 starPos = new Vector3(1.5f, 0f, 1.5f) + transform.position;
         float offset = 1.0f;
@@ -219,6 +222,7 @@ public class ParticleSys : MonoBehaviour
         psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psScreenSpaceCollisionDetectionCs.SetBool("isActive", isScreenSpaceCollisionActive);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
         psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
@@ -229,21 +233,23 @@ public class ParticleSys : MonoBehaviour
 
         GraphicsBuffer.CopyCount(particlesWithoutDepthCollisionCb, counterBuffer, 0);
 
-        int[] countArray = new int[1];
-        counterBuffer.GetData(countArray);
-        int numElementsToFill = threadGroupSize - (countArray[0] % threadGroupSize);
-        fillBufferCs.SetInt("numElements", numElementsToFill);
+        ////int[] countArray = new int[1];
+        ////counterBuffer.GetData(countArray);
+        ////int numElementsToFill = threadGroupSize - (countArray[0] % threadGroupSize);
+        ////fillBufferCs.SetInt("numElements", numElementsToFill);
 
-        fillBufferCs.Dispatch(kernelIdFillBuffer, 1, 1, 1);
+        ////fillBufferCs.Dispatch(kernelIdFillBuffer, 1, 1, 1);
 
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psVolumeStructureCollisionDetectionCs.SetBool("isActive", isVolumeStructureCollisionActive);
 
         psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, 1, 1, 1);
 
         // Partcle System reaction update setting and dispatch
-        psReactionUpdateCs.SetFloat(Shader.PropertyToID("deltaTime"), Time.deltaTime);
-        psReactionUpdateCs.Dispatch(kernelIdReactUpdate, 1/*particlesPos.Count*/, 1, 1);
+        psReactionUpdateCs.SetFloat("deltaTime", Time.deltaTime);
+        psReactionUpdateCs.Dispatch(kernelIdReactUpdate, 1, 1, 1);
 
         // Particles mesh instancing rendering
         RenderParams rp = new RenderParams(instancedParticlesMat);
@@ -316,14 +322,39 @@ public class ParticleSys : MonoBehaviour
                 }
             }
         }
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            isScreenSpaceCollisionActive = !isScreenSpaceCollisionActive;
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            isVolumeStructureCollisionActive = !isVolumeStructureCollisionActive;
+        }
     }
 
     void OnDestroy()
     {
+        //BvhSphereNodeGpu[] bvhGpu = new BvhSphereNodeGpu[bvh.Count];
+        //bvhCb.GetData(bvhGpu);
+
+        //bool isEqual = true;
+        //for (int i = 0; i < bvhGpu.Length; i++)
+        //{
+        //    if (!bvhGpu[i].Equals(bvh[i]))
+        //    {
+        //        isEqual = false;
+        //        break;
+        //    }
+        //}
+
+        //UnityEngine.Debug.Log("Bvh buffer is set right: " + isEqual);
+
         particlesPosCb?.Release();
         particlesVelCb?.Release();
         particlesWithoutDepthCollisionCb?.Release();
         bvhCb?.Release();
+        bvhStackCb?.Release();
+        bvhStackIndicesCb?.Release();
         bvhTrianglesCb?.Release();
         depthTexture.Release();
         normalTexture.Release();
@@ -538,6 +569,14 @@ public class ParticleSys : MonoBehaviour
             this.radius = radius;
             this.childOrStartNegated = childOrStartNegated;
             this.childOrSize = childOrSize;
+        }
+
+        public bool Equals(BvhSphereNode node)
+        {
+            return node.boundingSphere.center == center && 
+                node.boundingSphere.radius == radius &&
+                node.childrenORspan[0] == childOrStartNegated &&
+                node.childrenORspan[1] == childOrSize;
         }
     };
 
