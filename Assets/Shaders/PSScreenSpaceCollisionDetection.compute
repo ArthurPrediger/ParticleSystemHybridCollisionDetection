@@ -15,7 +15,7 @@ bool isActive;
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
 
-[numthreads(16,1,1)]
+[numthreads(32,1,1)]
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 {
     float3 particlePos = particlesPos[id.x];
@@ -41,11 +41,11 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
         if(distDifference <= particleRadius)
         {
-            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 8;
+            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 2;
             //particlesVel[id.x] = normalTexture.Load(int2(screenPos)).xyz * 6;
         }
         
-        particlesWithoutDepthCollision.Append(-1);
+        //particlesWithoutDepthCollision.Append(-1);
     }
     else
     {

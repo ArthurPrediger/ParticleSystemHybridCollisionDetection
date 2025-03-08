@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: InstancedParticleSpheres
-  m_Shader: {fileID: 4800000, guid: d3cff25d7c8d9174aa8d3a8ae3405530, type: 3}
+  m_Shader: {fileID: 4800000, guid: 3ee6d5e8ef7127b4eb81a12406af3d29, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []

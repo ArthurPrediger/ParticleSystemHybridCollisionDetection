@@ -173,7 +173,10 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
     if (RayTriangleIntersection(partInitPos, particleDir, v0, v1, v2, curCollisionPoint))
     {
         rayIntersected = true;
-        if (distance(partInitPos, curCollisionPoint) < distance(partInitPos, collisionPoint))
+        float3 diffInitCurCol = partInitPos - curCollisionPoint;
+        float3 diffInitPrevCol = partInitPos - collisionPoint;
+
+        if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
             collisionPoint = curCollisionPoint;
     }
     
@@ -182,7 +185,10 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
         if (RayCylinderIntersection(partInitPos, particleDir, tri.vertices[i], tri.vertices[(i + 1) % 3], particleRadius, curCollisionPoint))
         {
             rayIntersected = true;
-            if (distance(partInitPos, curCollisionPoint) < distance(partInitPos, collisionPoint))
+            float3 diffInitCurCol = partInitPos - curCollisionPoint;
+            float3 diffInitPrevCol = partInitPos - collisionPoint;
+
+            if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
                 collisionPoint = curCollisionPoint;
         }
     }
@@ -192,18 +198,24 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
         if (RaySphereIntersection(partInitPos, particleDir, tri.vertices[j], particleRadius, curCollisionPoint))
         {
             rayIntersected = true;
-            if (distance(partInitPos, curCollisionPoint) < distance(partInitPos, collisionPoint))
+            float3 diffInitCurCol = partInitPos - curCollisionPoint;
+            float3 diffInitPrevCol = partInitPos - collisionPoint;
+
+            if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
                 collisionPoint = curCollisionPoint;
         }
     }
     
-    if (distance(partInitPos, collisionPoint) > distance(partInitPos, partEndPos))
+    float3 diffInitCol = partInitPos - collisionPoint;
+    float3 diffInitEnd = partInitPos - partEndPos;
+
+    if (dot(diffInitCol, diffInitCol) > dot(diffInitEnd, diffInitEnd))
         rayIntersected = false;
         
     return rayIntersected;
 }
 
-[numthreads(16, 1, 1)]
+[numthreads(32, 1, 1)]
 void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
     int particleIndex = particlesWithoutDepthCollision.Consume();
@@ -263,12 +275,15 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
                     
                     if (ParticleTriangleIntersection(particleIndex, tri, curCollisionPoint))
                     {
-                        if (distance(partInitPos, curCollisionPoint) < distance(partInitPos, collisionPoint))
+                        float3 diffInitCurCol = partInitPos - curCollisionPoint;
+                        float3 diffInitPrevCol = partInitPos - collisionPoint;
+
+                        if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
                         {
                             collisionPoint = curCollisionPoint;
                             collisionTri = tri;
                             collided = true;
-                        }
+                        }                     
                     }
                 }
                 if (collided)
@@ -281,7 +296,7 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
                         triNormal = -triNormal;
 
                     particlesPos[particleIndex] = collisionPoint + triNormal * 0.01f;
-                    particlesVel[particleIndex] = normalize(reflect(normalize(particlesVel[particleIndex]), triNormal)) * 8;
+                    particlesVel[particleIndex] = normalize(reflect(normalize(particlesVel[particleIndex]), triNormal)) * 2;
                     
                     break;
                 }
