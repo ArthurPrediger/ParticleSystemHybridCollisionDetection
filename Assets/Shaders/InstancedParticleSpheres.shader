@@ -79,7 +79,8 @@ Shader "Custom/InstancedParticleSpheres"
 			}; 
 			
 			float4 _Color; 
-			StructuredBuffer<float3> particlesPos; 
+			StructuredBuffer<float3> particlesPos;
+			uniform float particleRadius;
 			
 			v2f vert (appdata v, uint svInstanceID : SV_InstanceID)
 			{ 
@@ -90,9 +91,10 @@ Shader "Custom/InstancedParticleSpheres"
 				float3 particlePos = float3(0, 0, 0); 
 				particlePos = particlesPos[GetIndirectInstanceID(svInstanceID)];
 				
-				o.pos = UnityWorldToClipPos(mul(unity_ObjectToWorld, v.vertex) + float4(particlePos, 0.0)); 
+				v.vertex *= particleRadius;
+				o.pos = UnityWorldToClipPos(mul(unity_ObjectToWorld, v.vertex) + float4(particlePos, 0.0));
 				
-				return o; 
+				return o;
 			}
 			
 			fixed4 frag (v2f i) : SV_Target 
