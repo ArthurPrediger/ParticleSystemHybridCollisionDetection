@@ -21,7 +21,7 @@ void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
     particlesPos[id.x] += particlesVel[id.x] * deltaTime;
 
     particlesAliveTime[id.x] += deltaTime;
-    if (particlesAliveTime[id.x] > 10.0)
+    if (particlesAliveTime[id.x] > 40.0)
     {
         particlesAliveTime[id.x] = 0.0;
         particlesVel[id.x] = 0.0;

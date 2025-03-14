@@ -91,13 +91,13 @@ public class ParticleSys : MonoBehaviour
         GetComponent<MeshRenderer>().enabled = false;
         GetComponent<MeshFilter>().mesh = null;
 
-        int xzDimension = 8;
+        int xzDimension = 128;
         float xzStart = (float)(xzDimension - 1) / 2f;
         float offset = 4f;
         Vector3 starPos = new Vector3(xzStart, 0f, xzStart) * offset + transform.position;
         for (int i = 0; i < xzDimension; i++)
         {
-            for (int j = 0; j < 1; j++)
+            for (int j = 0; j < 2; j++)
             {
                 for (int k = 0; k < xzDimension; k++)
                 {

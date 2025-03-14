@@ -45,7 +45,7 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
         if(distDifference <= particleRadius)
         {
-            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 2;
+            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 4;
             //particlesVel[id.x] = normalTexture.Load(int2(screenPos)).xyz * 6;
         }
         

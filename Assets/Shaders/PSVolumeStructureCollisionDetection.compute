@@ -36,8 +36,11 @@ bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
     float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
     float3 partVel = particlesVel[particleIndex];
     float3 partDir = normalize(particlesVel[particleIndex]);
-
+    
     float radiusSum = particleRadius + node.radius;
+    
+    if (distance(partInitPos, node.center) < radiusSum)
+        return true;
     
     float3 partToNode = node.center - partInitPos;
     float intoPartDir = dot(partToNode, partDir);
@@ -52,8 +55,8 @@ bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
     float d = sqrt(disc);
     collisionPoint = partInitPos + (intoPartDir - d) * partDir;
     
-    //if (distance(partInitPos, partEndPos) < distance(partInitPos, collisionPoint))
-    //    return false;
+    if (distance(partInitPos, partEndPos) < distance(partInitPos, collisionPoint))
+        return false;
     
     return true;
 }
@@ -118,6 +121,7 @@ bool RayCylinderIntersection(float3 rayOrigin, float3 rayDir, float3 bottomBase,
     if (y > 0.0 && y < baba)
     {
         //vec4(t, (oc + t * radius - ba * y / baba) / radius);
+        collisionPoint = rayOrigin + t * rayDir;
         return true;
     }
     
@@ -126,6 +130,7 @@ bool RayCylinderIntersection(float3 rayOrigin, float3 rayDir, float3 bottomBase,
     if (abs(k1 + k2 * t) < h)
     {
         //vec4(t, ba * sign(y) / sqrt(baba));
+        collisionPoint = rayOrigin + t * rayDir;
         return true;
     }
 
@@ -170,6 +175,18 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
     float3 triOffset = triNormal * particleRadius;
     
     float3 v0 = tri.vertices[0] + triOffset, v1 = tri.vertices[1] + triOffset, v2 = tri.vertices[2] + triOffset;
+    
+    if (RayTriangleIntersection(partInitPos, particleDir, v0, v1, v2, curCollisionPoint))
+    {
+        rayIntersected = true;
+        float3 diffInitCurCol = partInitPos - curCollisionPoint;
+        float3 diffInitPrevCol = partInitPos - collisionPoint;
+
+        if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
+            collisionPoint = curCollisionPoint;
+    }
+    
+    v0 = tri.vertices[0] - triOffset, v1 = tri.vertices[1] - triOffset, v2 = tri.vertices[2] - triOffset;
     
     if (RayTriangleIntersection(partInitPos, particleDir, v0, v1, v2, curCollisionPoint))
     {
@@ -294,11 +311,11 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
                         (collisionTri.vertices[2] - collisionTri.vertices[0])));
 
                     if (dot(triNormal, particlesVel[particleIndex]) > 0)
-                        triNormal = -triNormal;  
+                        triNormal = -triNormal;
                     
                     const float gravity = -9.81;
-                    particlesPos[particleIndex] = collisionPoint + (float3(0, -1.0, 0) * (gravity * deltaTime)) * deltaTime;
-                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 8;
+                    particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
+                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 4;
                     
                     break;
                 }
@@ -387,9 +404,9 @@ void PSVolumeStructureCollisionDetectionOne(uint3 id : SV_DispatchThreadID)
                     if (dot(triNormal, particlesVel[particleIndex]) > 0)
                         triNormal = -triNormal;
 
-                    //const float gravity = -9.81;
-                    //particlesPos[particleIndex] = collisionPoint - float3(0, 1, 0) * (gravity * deltaTime);
-                    //particlesVel[particleIndex] = 0.0; //normalize(reflect(normalize(particlesVel[particleIndex]), triNormal)) * 8;
+                    const float gravity = -9.81;
+                    particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
+                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 4;
                     
                     break;
                 }
