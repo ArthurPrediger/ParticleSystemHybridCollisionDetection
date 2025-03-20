@@ -4,6 +4,7 @@
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 AppendStructuredBuffer<int> particlesWithoutDepthCollision;
+RWStructuredBuffer<int> numParticlesWithoutDepthCollision : register(u0);
 matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;
@@ -11,7 +12,6 @@ float3 cameraPos;
 float2 screenSize;
 float particleRadius;
 bool isActive;
-int numParticles;
 
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
@@ -19,9 +19,6 @@ RWTexture2D<float4> normalTexture;
 [numthreads(32,1,1)]
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= numParticles)
-        return;
-    
     float3 particlePos = particlesPos[id.x];
 
     float4 viewPos = mul(viewMat, float4(particlePos, 1.0));
@@ -54,5 +51,6 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
     else
     {
         particlesWithoutDepthCollision.Append(id.x);
+        InterlockedAdd(numParticlesWithoutDepthCollision[0], 1);
     }
 }

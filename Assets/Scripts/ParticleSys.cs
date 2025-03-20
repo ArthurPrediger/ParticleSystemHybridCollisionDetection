@@ -20,13 +20,15 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private ComputeShader psVolumeStructureCollisionDetectionCs;
     private int kernelIdVolStructColDetc;
-    private int kernelIdVolStructColDetcOne;
+    [SerializeField]
+    private ComputeShader fillBufferCs;
+    private int kernelIdfillBuffer;
 
     [SerializeField]
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
-    private float particleRadius = 2.0f;
+    private float particleRadius = 0.2f;
 
     private Material partSysMat;
 
@@ -40,6 +42,7 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer particlesInitPosCB;
     private ComputeBuffer particlesAliveTimeCB;
     private ComputeBuffer particlesWithoutDepthCollisionCb;
+    private ComputeBuffer numParticlesWithoutDepthCollisionCb;
     private ComputeBuffer counterBuffer;
     private ComputeBuffer bvhCb;
     private ComputeBuffer bvhStackCb; // Stack to hold nodes to be visited
@@ -75,6 +78,7 @@ public class ParticleSys : MonoBehaviour
 
     private const int threadGroupSize = 32;
     private const int bvhStackSizePerThread = 128;
+    int threadGroupsX;
 
     private bool isScreenSpaceCollisionActive = false;
     private bool isVolumeStructureCollisionActive = true;
@@ -82,6 +86,8 @@ public class ParticleSys : MonoBehaviour
     GraphicsBuffer commandBuf;
     GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
     const int commandCount = 1;
+
+    private const float infinityFloatGpu = 1.0e38f;
 
     // Start is called before the first frame update
     void Start()
@@ -91,13 +97,13 @@ public class ParticleSys : MonoBehaviour
         GetComponent<MeshRenderer>().enabled = false;
         GetComponent<MeshFilter>().mesh = null;
 
-        int xzDimension = 128;
+        int xzDimension = 6;
         float xzStart = (float)(xzDimension - 1) / 2f;
-        float offset = 4f;
+        float offset = 1f;
         Vector3 starPos = new Vector3(xzStart, 0f, xzStart) * offset + transform.position;
         for (int i = 0; i < xzDimension; i++)
         {
-            for (int j = 0; j < 2; j++)
+            for (int j = 0; j < 1; j++)
             {
                 for (int k = 0; k < xzDimension; k++)
                 {
@@ -107,11 +113,19 @@ public class ParticleSys : MonoBehaviour
             }
         }
 
+        threadGroupsX = Mathf.CeilToInt((float)particlesPos.Count / (float)threadGroupSize);
+
+        for (int i = particlesPos.Count % threadGroupSize; i < threadGroupSize; i++)
+        {
+            particlesPos.Add(Vector3.one * infinityFloatGpu);
+            particlesVel.Add(Vector3.zero);
+        }
+
         // Compute buffer IDs setting
         kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
         kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
         kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
-        kernelIdVolStructColDetcOne = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetectionOne");
+        kernelIdfillBuffer = fillBufferCs.FindKernel("FillBuffer");
 
         // Particles Positions gpu buffer setting
         particlesPosCb = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
@@ -121,7 +135,6 @@ public class ParticleSys : MonoBehaviour
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesPos", particlesPosCb);
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesPos", particlesPosCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesPos", particlesPosCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "particlesPos", particlesPosCb);
 
         // Particles Initial Positions gpu buffer setting
         particlesInitPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
@@ -142,7 +155,6 @@ public class ParticleSys : MonoBehaviour
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesVel", particlesVelCb);
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesVel", particlesVelCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesVel", particlesVelCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "particlesVel", particlesVelCb);
 
         // Particles without screen space collision detection gpu buffer setting
         particlesWithoutDepthCollisionCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3, ComputeBufferType.Append);
@@ -150,7 +162,14 @@ public class ParticleSys : MonoBehaviour
 
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
+        fillBufferCs.SetBuffer(kernelIdfillBuffer, "buffer", particlesWithoutDepthCollisionCb);
+
+        // Num particles without screen space collision detection gpu buffer setting
+        numParticlesWithoutDepthCollisionCb = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Structured);
+        numParticlesWithoutDepthCollisionCb.SetData(new int[1] { 0 });
+
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
+        fillBufferCs.SetBuffer(kernelIdfillBuffer, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
 
         counterBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
@@ -201,19 +220,16 @@ public class ParticleSys : MonoBehaviour
         bvhCb.SetData(bvhGpu);
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvh", bvhCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "bvh", bvhCb);
 
         // Stack for bvh nodes gpu buffer setting
         bvhStackCb = new ComputeBuffer(particlesPos.Count * bvhStackSizePerThread, sizeof(int), ComputeBufferType.Structured);
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStack", bvhStackCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "bvhStack", bvhStackCb);
 
         // Stack indices of each thread gpu buffer setting
         bvhStackIndicesCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "bvhStackIndices", bvhStackIndicesCb);
 
         // BVH triangles gpu buffer setting
         bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)), ComputeBufferType.Structured);
@@ -229,7 +245,6 @@ public class ParticleSys : MonoBehaviour
         bvhTrianglesCb.SetData(trianglesGpu);
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhTriangles", bvhTrianglesCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcOne, "bvhTriangles", bvhTrianglesCb);
 
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[commandCount];
@@ -238,7 +253,6 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        int threadGroupsX = Mathf.CeilToInt((float)particlesPos.Count / (float)threadGroupSize);
         float deltaTime = Time.deltaTime;
 
         // Screen Space Particle Collision setting and dispatch
@@ -252,37 +266,35 @@ public class ParticleSys : MonoBehaviour
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
         psScreenSpaceCollisionDetectionCs.SetBool("isActive", isScreenSpaceCollisionActive);
-        psScreenSpaceCollisionDetectionCs.SetInt("numParticles", particlesPos.Count);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
         psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
 
         psScreenSpaceCollisionDetectionCs.Dispatch(kernelIdScrSpaceColDetc, threadGroupsX, 1, 1);
 
-        // Finding the number of particles that do not complete a thread group 
+        //Finding the number of particles that do not complete a thread group
+        int[] numNoCollison = new int[1];
+        numParticlesWithoutDepthCollisionCb.GetData(numNoCollison);
+        int threadGroupsXNoCollision = Mathf.CeilToInt((float)numNoCollison[0] / (float)threadGroupSize);
+        UnityEngine.Debug.Log(numNoCollison[0]);
+        UnityEngine.Debug.Log(threadGroupsXNoCollision);
 
-        GraphicsBuffer.CopyCount(particlesWithoutDepthCollisionCb, counterBuffer, 0);
-
-        int[] countArray = new int[1];
-        counterBuffer.GetData(countArray);
-        int numElementsOverThreadGroup = threadGroupSize - (countArray[0] % threadGroupSize);
-        int threadGroupsXFloor = Mathf.FloorToInt((float)countArray[0] / 32f);
+        fillBufferCs.Dispatch(kernelIdfillBuffer, 1, 1, 1);
 
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
         psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psVolumeStructureCollisionDetectionCs.SetBool("isActive", isVolumeStructureCollisionActive);
 
-        psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, threadGroupsXFloor, 1, 1);
-
-        if(numElementsOverThreadGroup < threadGroupSize)
+        if(threadGroupsXNoCollision > 0)
         {
-            psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetcOne, numElementsOverThreadGroup, 1, 1);
+            psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, threadGroupsX, 1, 1);
         }
+
+        numParticlesWithoutDepthCollisionCb.SetData(new int[1] { 0 });
 
         // Partcle System reaction update setting and dispatch
         psReactionUpdateCs.SetFloat("deltaTime", deltaTime);
-        psReactionUpdateCs.SetInt("numParticles", particlesPos.Count);
         psReactionUpdateCs.Dispatch(kernelIdReactUpdate, threadGroupsX, 1, 1);
 
         // Particles mesh instancing rendering

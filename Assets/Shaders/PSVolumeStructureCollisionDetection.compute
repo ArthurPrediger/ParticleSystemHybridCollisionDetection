@@ -1,6 +1,5 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSVolumeStructureCollisionDetection
-#pragma kernel PSVolumeStructureCollisionDetectionOne
 
 //Maximum stackdepth
 #define MAX_STACK_SIZE 128
@@ -235,14 +234,14 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
 
 [numthreads(32, 1, 1)]
 void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
-{
+{    
     int particleIndex = particlesWithoutDepthCollision.Consume();
     
     if(!isActive)
         return;
     
-    if (particleIndex == -1)
-        return;
+    //if (particleIndex == -1)
+    //    return;
     
     uint threadId = id.x;
     uint stackBase = threadId * MAX_STACK_SIZE;
@@ -313,97 +312,6 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
                     if (dot(triNormal, particlesVel[particleIndex]) > 0)
                         triNormal = -triNormal;
                     
-                    const float gravity = -9.81;
-                    particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
-                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 4;
-                    
-                    break;
-                }
-            }
-        }
-    }
-}
-
-[numthreads(1, 1, 1)]
-void PSVolumeStructureCollisionDetectionOne(uint3 id : SV_DispatchThreadID)
-{
-    int particleIndex = particlesWithoutDepthCollision.Consume();
-    
-    if (!isActive)
-        return;
-    
-    if (particleIndex == -1)
-        return;
-    
-    uint threadId = id.x;
-    uint stackBase = threadId * MAX_STACK_SIZE;
-    
-    bvhStackIndices[threadId] = 0;
-    bvhStack[stackBase + bvhStackIndices[threadId]++] = 0; // Push root node onto stack
-    
-    while (bvhStackIndices[threadId] > 0)
-    {
-        int nodeIndex = bvhStack[stackBase + --bvhStackIndices[threadId]];
-        BvhSphereNode node = bvh[nodeIndex];
-        
-        if (ParticleSphereIntersection(particleIndex, node))
-        {
-            float3 partInitPos = particlesPos[particleIndex];
-            float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
-            float3 partDir = normalize(particlesVel[particleIndex]);
-            
-            if (node.childOrStartNegated > 0)
-            {
-                BvhSphereNode child0 = bvh[node.childOrStartNegated];
-                BvhSphereNode child1 = bvh[node.childOrSize];
-                
-                float3 partToChild0 = child0.center - partInitPos;
-                float3 partToChild1 = child1.center - partInitPos;
-                
-                // Push children onto the stack
-                if (dot(partDir, partToChild0) < dot(partDir, partToChild1))
-                {
-                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
-                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
-                }
-                else
-                {
-                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
-                    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
-                }
-            }
-            else
-            {
-                BvhTriangle collisionTri;
-                float3 collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
-                bool collided = false;
-                for (int i = 0; i < node.childOrSize; i++)
-                {
-                    BvhTriangle tri = bvhTriangles[-node.childOrStartNegated + i];
-                    float3 curCollisionPoint = float3(1, 1, 1) * FLOAT_MAX;
-                    
-                    if (ParticleTriangleIntersection(particleIndex, tri, curCollisionPoint))
-                    {
-                        float3 diffInitCurCol = partInitPos - curCollisionPoint;
-                        float3 diffInitPrevCol = partInitPos - collisionPoint;
-
-                        if (dot(diffInitCurCol, diffInitCurCol) < dot(diffInitPrevCol, diffInitPrevCol))
-                        {
-                            collisionPoint = curCollisionPoint;
-                            collisionTri = tri;
-                            collided = true;
-                        }
-                    }
-                }
-                if (collided)
-                {
-                    float3 triNormal = normalize(cross(
-                        (collisionTri.vertices[1] - collisionTri.vertices[0]),
-                        (collisionTri.vertices[2] - collisionTri.vertices[0])));
-
-                    if (dot(triNormal, particlesVel[particleIndex]) > 0)
-                        triNormal = -triNormal;
-
                     const float gravity = -9.81;
                     particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
                     particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 4;
