@@ -240,9 +240,6 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
     if(!isActive)
         return;
     
-    //if (particleIndex == -1)
-    //    return;
-    
     uint threadId = id.x;
     uint stackBase = threadId * MAX_STACK_SIZE;
     

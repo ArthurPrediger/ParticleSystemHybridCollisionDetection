@@ -28,7 +28,7 @@ public class ParticleSys : MonoBehaviour
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
-    private float particleRadius = 0.2f;
+    private float particleRadius = 2.0f;
 
     private Material partSysMat;
 
@@ -97,13 +97,13 @@ public class ParticleSys : MonoBehaviour
         GetComponent<MeshRenderer>().enabled = false;
         GetComponent<MeshFilter>().mesh = null;
 
-        int xzDimension = 6;
+        int xzDimension = 128;
         float xzStart = (float)(xzDimension - 1) / 2f;
-        float offset = 1f;
+        float offset = 4f;
         Vector3 starPos = new Vector3(xzStart, 0f, xzStart) * offset + transform.position;
         for (int i = 0; i < xzDimension; i++)
         {
-            for (int j = 0; j < 1; j++)
+            for (int j = 0; j < 32; j++)
             {
                 for (int k = 0; k < xzDimension; k++)
                 {
@@ -265,6 +265,7 @@ public class ParticleSys : MonoBehaviour
         psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psScreenSpaceCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psScreenSpaceCollisionDetectionCs.SetBool("isActive", isScreenSpaceCollisionActive);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
@@ -276,8 +277,6 @@ public class ParticleSys : MonoBehaviour
         int[] numNoCollison = new int[1];
         numParticlesWithoutDepthCollisionCb.GetData(numNoCollison);
         int threadGroupsXNoCollision = Mathf.CeilToInt((float)numNoCollison[0] / (float)threadGroupSize);
-        UnityEngine.Debug.Log(numNoCollison[0]);
-        UnityEngine.Debug.Log(threadGroupsXNoCollision);
 
         fillBufferCs.Dispatch(kernelIdfillBuffer, 1, 1, 1);
 
