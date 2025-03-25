@@ -1,5 +1,6 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSVolumeStructureCollisionDetection
+#pragma kernel PSVolumeStructureCollisionDetectionHybrid
 
 //Maximum stackdepth
 #define MAX_STACK_SIZE 128
@@ -27,7 +28,6 @@ RWStructuredBuffer<float3> particlesVel;
 ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
-bool isActive;
 
 bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
 {
@@ -232,14 +232,8 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
     return rayIntersected;
 }
 
-[numthreads(32, 1, 1)]
-void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
-{    
-    int particleIndex = particlesWithoutDepthCollision.Consume();
-    
-    if(!isActive)
-        return;
-    
+void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
+{         
     uint threadId = id.x;
     uint stackBase = threadId * MAX_STACK_SIZE;
     
@@ -318,4 +312,18 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
             }
         }
     }
+}
+
+[numthreads(32, 1, 1)]
+void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
+{
+    TraverseVolumeStructureForCollisionDetection(id.x, id);
+}
+
+[numthreads(32, 1, 1)]
+void PSVolumeStructureCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
+{
+    int particleIndex = particlesWithoutDepthCollision.Consume();
+    
+    TraverseVolumeStructureForCollisionDetection(particleIndex, id);
 }

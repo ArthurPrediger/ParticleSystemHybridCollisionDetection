@@ -1,5 +1,6 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSScreenSpaceCollisionDetection
+#pragma kernel PSScreenSpaceCollisionDetectionHybrid
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
@@ -12,16 +13,9 @@ float3 cameraPos;
 float2 screenSize;
 float particleRadius;
 float deltaTime;
-bool isActive;
 
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
-
-void AddParticleWithoutDepthCollision(int particleIndex)
-{
-    particlesWithoutDepthCollision.Append(particleIndex);
-    InterlockedAdd(numParticlesWithoutDepthCollision[0], 1);
-}
 
 [numthreads(32,1,1)]
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
@@ -40,7 +34,7 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
     bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
 
-    if(isInsideScreen && isActive)
+    if(isInsideScreen)
     {
         float depth = depthTexture.Load(int2(screenPos));
 
@@ -48,6 +42,45 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
         float distDifference = abs(depth - eyeToParticleDist);
 
         if(distDifference <= particleRadius)
+        {
+            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 4;
+            const float gravity = -9.81;
+            particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
+        }
+    }
+}
+
+void AddParticleWithoutDepthCollision(int particleIndex)
+{
+    particlesWithoutDepthCollision.Append(particleIndex);
+    InterlockedAdd(numParticlesWithoutDepthCollision[0], 1);
+}
+
+[numthreads(32, 1, 1)]
+void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
+{
+    float3 particlePos = particlesPos[id.x];
+
+    float4 viewPos = mul(viewMat, float4(particlePos, 1.0));
+
+    float4 clipPos = mul(projectionMat, viewPos);
+
+    float3 ndcPos = clipPos.xyz / clipPos.w;
+
+    float2 screenPos;
+    screenPos.x = (ndcPos.x * 0.5 + 0.5) * screenSize.x;
+    screenPos.y = (ndcPos.y * 0.5 + 0.5) * screenSize.y;
+
+    bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
+
+    if (isInsideScreen)
+    {
+        float depth = depthTexture.Load(int2(screenPos));
+
+        float eyeToParticleDist = length(particlePos - cameraPos);
+        float distDifference = abs(depth - eyeToParticleDist);
+
+        if (distDifference <= particleRadius)
         {
             particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 4;
             const float gravity = -9.81;
