@@ -25,7 +25,8 @@ RWStructuredBuffer<int> bvhStackIndices; // Per-thread index for stack handling
 RWStructuredBuffer<BvhTriangle> bvhTriangles;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
+//ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
+RWStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
 
@@ -323,7 +324,8 @@ void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 [numthreads(32, 1, 1)]
 void PSVolumeStructureCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 {
-    int particleIndex = particlesWithoutDepthCollision.Consume();
+    //int particleIndex = particlesWithoutDepthCollision.Consume();
+    int particleIndex = particlesWithoutDepthCollision[id.x];
     
     TraverseVolumeStructureForCollisionDetection(particleIndex, id);
 }

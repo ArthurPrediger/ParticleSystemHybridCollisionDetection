@@ -6,7 +6,7 @@ using UnityEngine;
 public class BenchmarkManager : MonoBehaviour
 {
     [SerializeField]
-    private List<Camera> cameras = new();
+    private List<GameObject> cameras = new();
 
     private int indexCurActiveCamera = 0;
     private float cameraActiveTime = 0.0f;
@@ -18,20 +18,20 @@ public class BenchmarkManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        foreach (Camera cam in cameras)
+        foreach (GameObject obj in cameras)
         {
-            cam.depthTextureMode = DepthTextureMode.Depth;
-            cam.enabled = false;
+            obj.GetComponent<Camera>().depthTextureMode = DepthTextureMode.Depth;
+            obj.SetActive(false);
         }
 
-        cameras.First().enabled = true;
+        cameras.First().SetActive(true);
 
         cameraActiveLifetime = GetComponent<ParticleSys>().particlesLifetime;
 
         collisionDetectionMethods = new() {
+            "SetHybridCollisionActive",
             "SetScreenSpaceCollisionActive",
             "SetVolumeStructureCollisionActive",
-            "SetHybridCollisionActive"
         };
 
         GetComponent<ParticleSys>().Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f);
@@ -44,16 +44,16 @@ public class BenchmarkManager : MonoBehaviour
 
         if(cameraActiveTime > cameraActiveLifetime)
         {
-            cameras[indexCurActiveCamera++].enabled = false;
-            
-            if(indexCurActiveCamera >= cameras.Count)
+            cameras[indexCurActiveCamera++].SetActive(false);
+
+            if (indexCurActiveCamera >= cameras.Count)
             {
                 indexCurActiveCamera = 0;
                 curCollisionDetectionMethod = (curCollisionDetectionMethod + 1) % collisionDetectionMethods.Count;
                 GetComponent<ParticleSys>().Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f);
             }
 
-            cameras[indexCurActiveCamera].enabled = true;
+            cameras[indexCurActiveCamera].SetActive(true);
             cameraActiveTime = 0f;
         }
     }
