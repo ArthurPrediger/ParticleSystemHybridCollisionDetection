@@ -3,7 +3,6 @@
 #pragma kernel PSVolumeStructureCollisionDetectionHybrid
 
 //Maximum stackdepth
-#define MAX_STACK_SIZE 128
 #define FLOAT_MAX 1.0e38
 
 struct BvhSphereNode
@@ -29,6 +28,7 @@ RWStructuredBuffer<float3> particlesVel;
 RWStructuredBuffer<int> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
+uint maxStackSize;
 
 bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
 {
@@ -236,7 +236,7 @@ bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3
 void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
 {         
     uint threadId = id.x;
-    uint stackBase = threadId * MAX_STACK_SIZE;
+    uint stackBase = threadId * maxStackSize;
     
     bvhStackIndices[threadId] = 0;
     bvhStack[stackBase + bvhStackIndices[threadId]++] = 0; // Push root node onto stack

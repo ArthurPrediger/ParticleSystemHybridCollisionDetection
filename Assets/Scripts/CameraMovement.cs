@@ -19,6 +19,8 @@ public class CameraMovement : MonoBehaviour
         Vector3 currentRotation = transform.localRotation.eulerAngles;
         rotationX = currentRotation.x;
         rotationY = currentRotation.y;
+
+        enabled = false;
     }
 
     void Update()

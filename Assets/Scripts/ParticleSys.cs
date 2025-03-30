@@ -2,12 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net;
-using System.Runtime.CompilerServices;
-using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.UIElements;
 
 public class ParticleSys : MonoBehaviour
 {
@@ -30,8 +26,9 @@ public class ParticleSys : MonoBehaviour
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
-    private readonly float particleRadius = 2.0f;
+    private readonly float particleRadius = 2f;
     public readonly float particlesLifetime = 15f;
+    public readonly int numParticlesXZ = 128;
 
     private List<Vector3> particlesPos = new();
     private List<Vector3> particlesVel = new();
@@ -82,7 +79,7 @@ public class ParticleSys : MonoBehaviour
     int threadGroupsX;
 
     private bool isScreenSpaceCollisionActive = true;
-    private bool isVolumeStructureCollisionActive = true;
+    private bool isVolumeStructureCollisionActive = false;
 
     GraphicsBuffer commandBuf;
     GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
@@ -90,27 +87,87 @@ public class ParticleSys : MonoBehaviour
 
     private const float infinityFloatGpu = 1.0e38f;
 
-    private Stopwatch benchmarkSw = new();
-    private List<float> benchmarkTimingsVolStrc { get; } = new();
-    private List<float> benchmarkTimingsScrSpace { get; } = new();
-    private List<float> benchmarkTimingsHybrid { get; } = new();
+    //private Stopwatch benchmarkSw = new();
+    private List<float> benchmarkTimingsScrSpace = new();
+    private List<float> benchmarkTimingsVolStrc = new();
+    private List<float> benchmarkTimingsHybrid = new();
 
-// Start is called before the first frame update
-void Start()
+    private Vector2Int lastScreenSize = new();
+
+    // Start is called before the first frame update
+    void Start()
     {
         instancedParticlesMat.enableInstancing = true;
         Camera.main.depthTextureMode = DepthTextureMode.Depth;
         GetComponent<MeshRenderer>().enabled = false;
         GetComponent<MeshFilter>().mesh = null;
 
+        lastScreenSize = new Vector2Int(Screen.width, Screen.height);
+    }
+
+    public void SetupParticleSystemData(int particleLayersY)
+    {
+        int xzDimension = numParticlesXZ;
+
+        if (particlesPos.Count == xzDimension * xzDimension * particleLayersY) return;
+
+        // Compute buffer IDs setting
+        kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
+        kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
+        kernelIdScrSpaceColDetcHybrid = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetectionHybrid");
+        kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
+        kernelIdVolStructColDetcHybrid = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetectionHybrid");
+        kernelIdCompDispArgs = computeDispatchArgsCs.FindKernel("ComputeDispatchArgs");
+
+        // CPU and GPU particle data buffers setup
+        SetupParticleDependentData(xzDimension, particleLayersY);
+
+        if (bvh.Count > 0) return;
+
+        // Dispatch args gpu buffer setting
+        argsBufferCb = new ComputeBuffer(3, sizeof(uint), ComputeBufferType.IndirectArguments);
+        argsBufferCb.SetData(new uint[3] { 0, 0, 0 });
+
+        computeDispatchArgsCs.SetBuffer(kernelIdCompDispArgs, "dispatchArgs", argsBufferCb);
+
+        // Depth and Normal textures for the Screen Space Collision Dectection method setup
+        SetupDepthAndNormalPrePassBuffers();
+
+        // BVH building and gpu BVH buffers setting up
+        BuildAndSetupBvh();
+
+        // Initialization of data for mesh instancing rendering of the particles
+        commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
+        commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[commandCount];
+    }
+
+    private void SetupParticleDependentData(int xzDimension, int yDimension)
+    {
+        particlesPos.Clear();
+        particlesPos.TrimExcess();
+        particlesVel.Clear();
+        particlesPos.TrimExcess();
+        particlesAliveTime.Clear();
+        particlesAliveTime.TrimExcess();
+
+        particlesPosCb?.Release();
+        particlesPosCb = null;
+        particlesVelCb?.Release();
+        particlesVelCb = null;
+        particlesWithoutDepthCollisionCb?.Release();
+        particlesWithoutDepthCollisionCb = null;
+        particlesInitPosCB?.Release();
+        particlesInitPosCB = null;
+        particlesAliveTimeCB?.Release();
+        particlesAliveTimeCB = null;
+
         // Initialization of particles positions and velocities
-        int xzDimension = 128;
         float xzStart = (float)(xzDimension - 1) / 2f;
         float offset = 4f;
         Vector3 starPos = new Vector3(xzStart, 0f, xzStart) * offset + transform.position;
         for (int i = 0; i < xzDimension; i++)
         {
-            for (int j = 0; j < 16; j++)
+            for (int j = 0; j < yDimension; j++)
             {
                 for (int k = 0; k < xzDimension; k++)
                 {
@@ -129,14 +186,6 @@ void Start()
             particlesVel.Add(Vector3.zero);
             particlesAliveTime.Add(0f);
         }
-
-        // Compute buffer IDs setting
-        kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
-        kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
-        kernelIdScrSpaceColDetcHybrid = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetectionHybrid");
-        kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
-        kernelIdVolStructColDetcHybrid = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetectionHybrid");
-        kernelIdCompDispArgs = computeDispatchArgsCs.FindKernel("ComputeDispatchArgs");
 
         // Particles Positions gpu buffer setting
         particlesPosCb = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
@@ -188,11 +237,23 @@ void Start()
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
         computeDispatchArgsCs.SetBuffer(kernelIdCompDispArgs, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
 
-        // Dispatch args gpu buffer setting
-        argsBufferCb = new ComputeBuffer(3, sizeof(uint), ComputeBufferType.IndirectArguments);
-        argsBufferCb.SetData(new uint[3] { 0, 0, 0 });
+        // Stack for bvh nodes gpu buffer setting
+        bvhStackCb = new ComputeBuffer(particlesPos.Count * bvhStackSizePerThread, sizeof(int), ComputeBufferType.Structured);
 
-        computeDispatchArgsCs.SetBuffer(kernelIdCompDispArgs, "dispatchArgs", argsBufferCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStack", bvhStackCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStack", bvhStackCb);
+
+        // Stack indices of each thread gpu buffer setting
+        bvhStackIndicesCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
+    }
+
+    private void SetupDepthAndNormalPrePassBuffers()
+    {
+        if (depthTexture) depthTexture.Release();
+        if (normalTexture) normalTexture.Release();
 
         // Depth buffer for depth pre-pass setting
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
@@ -209,7 +270,10 @@ void Start()
 
         psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetc, "normalTexture", normalTexture);
         psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetcHybrid, "normalTexture", normalTexture);
+    }
 
+    private void BuildAndSetupBvh()
+    {
         // BVH building for the current scene
         Stopwatch sw0 = new Stopwatch();
         Stopwatch sw1 = new Stopwatch();
@@ -235,7 +299,7 @@ void Start()
         {
             BvhSphereNode node = bvh[i];
             bvhGpu[i] = new BvhSphereNodeGpu(
-                node.boundingSphere.center, 
+                node.boundingSphere.center,
                 node.boundingSphere.radius,
                 node.childrenORspan[0],
                 node.childrenORspan[1]);
@@ -246,24 +310,12 @@ void Start()
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvh", bvhCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvh", bvhCb);
 
-        // Stack for bvh nodes gpu buffer setting
-        bvhStackCb = new ComputeBuffer(particlesPos.Count * bvhStackSizePerThread, sizeof(int), ComputeBufferType.Structured);
-
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStack", bvhStackCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStack", bvhStackCb);
-
-        // Stack indices of each thread gpu buffer setting
-        bvhStackIndicesCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
-
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
-
         // BVH triangles gpu buffer setting
         bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)), ComputeBufferType.Structured);
 
         BvhTriangleGpu[] trianglesGpu = new BvhTriangleGpu[triangles.Count];
 
-        for(int i = 0; i < triangles.Count; i++)
+        for (int i = 0; i < triangles.Count; i++)
         {
             BvhTriangle tri = triangles[i];
             trianglesGpu[i] = new BvhTriangleGpu(tri.vertices[0], tri.vertices[1], tri.vertices[2]);
@@ -273,10 +325,6 @@ void Start()
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhTriangles", bvhTrianglesCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhTriangles", bvhTrianglesCb);
-
-        // Initialization of data for mesh instancing rendering of the particles
-        commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
-        commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[commandCount];
     }
 
     // Update is called once per frame
@@ -285,28 +333,22 @@ void Start()
         // Screen Space Particle Collision setting and dispatch
         if (IsScreenSpaceCollisionActive())
         {
-            benchmarkSw.Start();
             RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetc);
-            benchmarkSw.Stop();
-            benchmarkTimingsScrSpace.Add(benchmarkSw.ElapsedMilliseconds);
+            benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
         }
 
         // Volumes Structure Particle Collision setting and dispatch
         if (IsVolumeStructureCollisionActive())
         {
-            benchmarkSw.Start();
             RunVolumeStructureCollisionDetection();
-            benchmarkSw.Stop();
-            benchmarkTimingsVolStrc.Add(benchmarkSw.ElapsedMilliseconds);
+            benchmarkTimingsVolStrc.Add(Time.deltaTime * 1000f);
         }
 
         // Screen Space and Volumes Structure Particle Collision Hybrid Method setting and dispatch
         if (IsHybridCollisionActive())
         {
-            benchmarkSw.Start();
             RunHybridCollisionDetection();
-            benchmarkSw.Stop();
-            benchmarkTimingsHybrid.Add(benchmarkSw.ElapsedMilliseconds);
+            benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
         }
 
         // Particle System reaction update setting and dispatch
@@ -342,8 +384,16 @@ void Start()
         particlesPosCb = null;
         particlesVelCb?.Release();
         particlesVelCb = null;
+        particlesInitPosCB?.Release();
+        particlesInitPosCB = null;
+        particlesAliveTimeCB?.Release();
+        particlesAliveTimeCB = null;
         particlesWithoutDepthCollisionCb?.Release();
         particlesWithoutDepthCollisionCb = null;
+        numParticlesWithoutDepthCollisionCb?.Release();
+        numParticlesWithoutDepthCollisionCb = null;
+        argsBufferCb?.Release();
+        argsBufferCb = null;
         bvhCb?.Release();
         bvhCb = null;
         bvhStackCb?.Release();
@@ -354,15 +404,23 @@ void Start()
         bvhTrianglesCb = null;
         commandBuf?.Release();
         commandBuf = null;
-        depthTexture.Release();
-        normalTexture.Release();
+        if(depthTexture) depthTexture.Release();
+        if(normalTexture) normalTexture.Release();
     }
 
     void RunScreenSpaceCollisionDetection(int kernelId)
     {
+        Vector2Int curScreenSize = new Vector2Int(Screen.width, Screen.height);
+
+        if(curScreenSize != lastScreenSize)
+        {
+            lastScreenSize = curScreenSize;
+            SetupDepthAndNormalPrePassBuffers();
+        }
+
         DepthPrePass();
         NormalPrePass();
-        //textureImage.texture = depthTexture;
+        textureImage.texture = depthTexture;
 
         psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
@@ -381,6 +439,7 @@ void Start()
     {
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
         psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
         psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, threadGroupsX, 1, 1);
     }
@@ -396,6 +455,7 @@ void Start()
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
         psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
         psVolumeStructureCollisionDetectionCs.DispatchIndirect(kernelIdVolStructColDetcHybrid, argsBufferCb, 0);
     }
@@ -457,6 +517,15 @@ void Start()
     public bool IsHybridCollisionActive()
     {
         return isScreenSpaceCollisionActive && isVolumeStructureCollisionActive;
+    }
+
+    public List<Tuple<string, List<float>>> GetBenchmarkTimings()
+    {
+        return new() {
+            Tuple.Create("Screen Space Collision Detection", benchmarkTimingsScrSpace),
+            Tuple.Create("Volume Structure Collision Detection", benchmarkTimingsVolStrc),
+            Tuple.Create("Hybrid Collision Detection",  benchmarkTimingsHybrid)
+        };
     }
 
     public void ResetBenchmarks()
