@@ -4,10 +4,10 @@
 StructuredBuffer<float3> particlesInitPos;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-RWStructuredBuffer<float> particlesAliveTime;
+RWStructuredBuffer<int> particlesAliveTime;
 //RWStructuredBuffer<float> particlesLifeSpan;
 float deltaTime;
-float particlesLifetime;
+int particlesLifetimeSteps;
 
 [numthreads(32,1,1)]
 void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
@@ -17,11 +17,12 @@ void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
     particlesVel[id.x] += float3(0, 1, 0) * (gravity * deltaTime);
     particlesPos[id.x] += particlesVel[id.x] * deltaTime;
 
-    particlesAliveTime[id.x] += deltaTime;
-    if (particlesAliveTime[id.x] > particlesLifetime)
+    if (particlesAliveTime[id.x] >= particlesLifetimeSteps)
     {
-        particlesAliveTime[id.x] = 0.0;
+        particlesAliveTime[id.x] = 0;
         particlesVel[id.x] = 0.0;
         particlesPos[id.x] = particlesInitPos[id.x];
     }
+    
+    particlesAliveTime[id.x]++;
 }

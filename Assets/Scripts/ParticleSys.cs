@@ -27,12 +27,13 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private Mesh particleMesh;
     private readonly float particleRadius = 2f;
-    public readonly float particlesLifetime = 15f;
+    public readonly int particlesLifetimeSteps = 2001;
     public readonly int numParticlesXZ = 128;
+    public readonly float deltaTime = 0.01f;
 
     private List<Vector3> particlesPos = new();
     private List<Vector3> particlesVel = new();
-    private List<float> particlesAliveTime = new();
+    private List<int> particlesAliveTime = new();
     //private List<float> particlesLifeSpan = new();
 
     private ComputeBuffer particlesPosCb;
@@ -87,7 +88,7 @@ public class ParticleSys : MonoBehaviour
 
     private const float infinityFloatGpu = 1.0e38f;
 
-    //private Stopwatch benchmarkSw = new();
+    private Stopwatch benchmarkSw = new();
     private List<float> benchmarkTimingsScrSpace = new();
     private List<float> benchmarkTimingsVolStrc = new();
     private List<float> benchmarkTimingsHybrid = new();
@@ -173,7 +174,7 @@ public class ParticleSys : MonoBehaviour
                 {
                     particlesPos.Add((starPos - new Vector3(offset * i, -(offset * j * 4), offset * k)));
                     particlesVel.Add(Vector3.zero);
-                    particlesAliveTime.Add(0f);
+                    particlesAliveTime.Add(0);
                 }
             }
         }
@@ -184,7 +185,7 @@ public class ParticleSys : MonoBehaviour
         {
             particlesPos.Add(Vector3.one * infinityFloatGpu);
             particlesVel.Add(Vector3.zero);
-            particlesAliveTime.Add(0f);
+            particlesAliveTime.Add(0);
         }
 
         // Particles Positions gpu buffer setting
@@ -205,7 +206,7 @@ public class ParticleSys : MonoBehaviour
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesInitPos", particlesInitPosCB);
 
         // Particles Alive Time gpu buffer setting
-        particlesAliveTimeCB = new ComputeBuffer(particlesPos.Count, sizeof(float), ComputeBufferType.Structured);
+        particlesAliveTimeCB = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         particlesAliveTimeCB.SetData(particlesAliveTime);
 
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesAliveTime", particlesAliveTimeCB);
@@ -254,6 +255,7 @@ public class ParticleSys : MonoBehaviour
     {
         if (depthTexture) depthTexture.Release();
         if (normalTexture) normalTexture.Release();
+
 
         // Depth buffer for depth pre-pass setting
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
@@ -330,30 +332,41 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        GC.Collect();
+
         // Screen Space Particle Collision setting and dispatch
         if (IsScreenSpaceCollisionActive())
         {
+            //benchmarkSw.Restart();
             RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetc);
+            //benchmarkSw.Stop();
+            //benchmarkTimingsScrSpace.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
         }
 
         // Volumes Structure Particle Collision setting and dispatch
         if (IsVolumeStructureCollisionActive())
         {
+            //benchmarkSw.Restart();
             RunVolumeStructureCollisionDetection();
+            //benchmarkSw.Stop();
+            //benchmarkTimingsVolStrc.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsVolStrc.Add(Time.deltaTime * 1000f);
         }
 
         // Screen Space and Volumes Structure Particle Collision Hybrid Method setting and dispatch
         if (IsHybridCollisionActive())
         {
+            //benchmarkSw.Restart();
             RunHybridCollisionDetection();
+            //benchmarkSw.Stop();
+            //benchmarkTimingsHybrid.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
         }
 
         // Particle System reaction update setting and dispatch
-        psReactionUpdateCs.SetFloat("particlesLifetime", particlesLifetime);
-        psReactionUpdateCs.SetFloat("deltaTime", Time.deltaTime);
+        psReactionUpdateCs.SetInt("particlesLifetimeSteps", particlesLifetimeSteps);
+        psReactionUpdateCs.SetFloat("deltaTime", deltaTime);
         psReactionUpdateCs.Dispatch(kernelIdReactUpdate, threadGroupsX, 1, 1);
 
         // Particles mesh instancing rendering
@@ -420,14 +433,15 @@ public class ParticleSys : MonoBehaviour
 
         DepthPrePass();
         NormalPrePass();
-        textureImage.texture = depthTexture;
+        //textureImage.texture = depthTexture;
 
         psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
+        psScreenSpaceCollisionDetectionCs.SetVector("cameraForward", Camera.main.transform.forward);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psScreenSpaceCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psScreenSpaceCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
         psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
@@ -438,7 +452,7 @@ public class ParticleSys : MonoBehaviour
     void RunVolumeStructureCollisionDetection()
     {
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
         psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, threadGroupsX, 1, 1);
@@ -454,7 +468,7 @@ public class ParticleSys : MonoBehaviour
 
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", Time.deltaTime);
+        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
         psVolumeStructureCollisionDetectionCs.DispatchIndirect(kernelIdVolStructColDetcHybrid, argsBufferCb, 0);

@@ -11,6 +11,7 @@ matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;
 float3 cameraPos;
+float3 cameraForward;
 float2 screenSize;
 float particleRadius;
 float deltaTime;
@@ -35,7 +36,7 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
     bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
 
-    if(isInsideScreen)
+    if (isInsideScreen /*&& dot(cameraForward, (particlePos - cameraPos)) > 0.0*/)
     {
         float depth = depthTexture.Load(int2(screenPos));
 

@@ -14,8 +14,8 @@ public class BenchmarkManager : MonoBehaviour
     private List<GameObject> cameras = new();
 
     private int indexCurActiveCamera = 0;
-    private float cameraActiveTime = 0.0f;
-    private float cameraActiveLifetime;
+    private int cameraActiveTimeSteps = 0;
+    private float cameraActiveLifetimeSteps;
 
     private List<string> collisionDetectionMethods;
     private int curCollisionDetectionMethod = 0;
@@ -49,7 +49,7 @@ public class BenchmarkManager : MonoBehaviour
 
         cameras.First().SetActive(true);
 
-        cameraActiveLifetime = GetComponent<ParticleSys>().particlesLifetime;
+        cameraActiveLifetimeSteps = GetComponent<ParticleSys>().particlesLifetimeSteps;
 
         loadingBenchText.enabled = false;
         resultsBenchText.enabled = false;
@@ -64,9 +64,7 @@ public class BenchmarkManager : MonoBehaviour
     {
         if (!isBenchmarkRunning) return;
 
-        cameraActiveTime += Time.deltaTime;
-
-        if(cameraActiveTime > cameraActiveLifetime)
+        if(cameraActiveTimeSteps++ >= cameraActiveLifetimeSteps)
         {
             cameras[indexCurActiveCamera++].SetActive(false);
 
@@ -75,8 +73,8 @@ public class BenchmarkManager : MonoBehaviour
                 indexCurActiveCamera = 0;
                 curCollisionDetectionMethod++;
                 if (curCollisionDetectionMethod < collisionDetectionMethods.Count)
-                { 
-                    particleSys.Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f); 
+                {
+                    particleSys.Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f);
                 }
                 else
                 {
@@ -93,7 +91,22 @@ public class BenchmarkManager : MonoBehaviour
             }
 
             cameras[indexCurActiveCamera].SetActive(true);
-            cameraActiveTime = 0f;
+            cameraActiveTimeSteps = 0;
+
+            isBenchmarkRunning = false;
+            particleSys.enabled = false;
+            StartCoroutine(WaitCameraChange());
+        }
+    }
+
+    IEnumerator WaitCameraChange()
+    {
+        yield return new WaitForSeconds(1f);
+
+        if (!resultsBenchText.enabled)
+        {
+            isBenchmarkRunning = true;
+            particleSys.enabled = true;
         }
     }
 
@@ -143,13 +156,19 @@ public class BenchmarkManager : MonoBehaviour
 
         foreach (var benchTiming in benchmarkTimings)
         {
+            benchTiming.Item2.RemoveAt(0);
+            float min = float.MaxValue;
+            float max = float.MinValue;
             float runningAverage = 0;
             for (int i = 0; i < benchTiming.Item2.Count; i++)
             {
                 runningAverage = (runningAverage * (float)i + benchTiming.Item2[i]) / (float)(i + 1);
+                max = Mathf.Max(max, benchTiming.Item2[i]);
+                min = Mathf.Min(min, benchTiming.Item2[i]);
             }
 
-            resultsBenchText.text += benchTiming.Item1 + ": " + runningAverage.ToString("F4") + "ms\n";
+            resultsBenchText.text += benchTiming.Item1 + ": " + runningAverage.ToString("F4") + "ms   ";
+            resultsBenchText.text += "Min: " + min.ToString("F4") + "   Max: " + max.ToString("F4") + "\n";
         }
 
         resultsBenchText.enabled = true;
