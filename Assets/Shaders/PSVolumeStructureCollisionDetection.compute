@@ -25,7 +25,7 @@ RWStructuredBuffer<BvhTriangle> bvhTriangles;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 //ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
-RWStructuredBuffer<int> particlesWithoutDepthCollision;
+RWStructuredBuffer<uint> particlesWithoutDepthCollision;
 float particleRadius;
 float deltaTime;
 uint maxStackSize;

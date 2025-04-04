@@ -5,8 +5,8 @@
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 //AppendStructuredBuffer<int> particlesWithoutDepthCollision;
-RWStructuredBuffer<int> particlesWithoutDepthCollision;
-RWStructuredBuffer<int> numParticlesWithoutDepthCollision : register(u0);
+RWStructuredBuffer<uint> particlesWithoutDepthCollision;
+RWStructuredBuffer<uint> numParticlesWithoutDepthCollision : register(u0);
 matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;

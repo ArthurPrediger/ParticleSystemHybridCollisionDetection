@@ -88,7 +88,7 @@ public class ParticleSys : MonoBehaviour
 
     private const float infinityFloatGpu = 1.0e38f;
 
-    private Stopwatch benchmarkSw = new();
+    //private Stopwatch benchmarkSw = new();
     private List<float> benchmarkTimingsScrSpace = new();
     private List<float> benchmarkTimingsVolStrc = new();
     private List<float> benchmarkTimingsHybrid = new();
@@ -256,7 +256,6 @@ public class ParticleSys : MonoBehaviour
         if (depthTexture) depthTexture.Release();
         if (normalTexture) normalTexture.Release();
 
-
         // Depth buffer for depth pre-pass setting
         depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
@@ -332,35 +331,24 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        GC.Collect();
-
         // Screen Space Particle Collision setting and dispatch
         if (IsScreenSpaceCollisionActive())
         {
-            //benchmarkSw.Restart();
             RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetc);
-            //benchmarkSw.Stop();
-            //benchmarkTimingsScrSpace.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
         }
 
         // Volumes Structure Particle Collision setting and dispatch
         if (IsVolumeStructureCollisionActive())
         {
-            //benchmarkSw.Restart();
             RunVolumeStructureCollisionDetection();
-            //benchmarkSw.Stop();
-            //benchmarkTimingsVolStrc.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsVolStrc.Add(Time.deltaTime * 1000f);
         }
 
         // Screen Space and Volumes Structure Particle Collision Hybrid Method setting and dispatch
         if (IsHybridCollisionActive())
         {
-            //benchmarkSw.Restart();
             RunHybridCollisionDetection();
-            //benchmarkSw.Stop();
-            //benchmarkTimingsHybrid.Add((float)benchmarkSw.Elapsed.TotalMilliseconds);
             benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
         }
 

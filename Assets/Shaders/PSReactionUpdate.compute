@@ -4,10 +4,10 @@
 StructuredBuffer<float3> particlesInitPos;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-RWStructuredBuffer<int> particlesAliveTime;
+RWStructuredBuffer<uint> particlesAliveTime;
 //RWStructuredBuffer<float> particlesLifeSpan;
 float deltaTime;
-int particlesLifetimeSteps;
+uint particlesLifetimeSteps;
 
 [numthreads(32,1,1)]
 void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
