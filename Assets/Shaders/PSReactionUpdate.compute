@@ -12,12 +12,14 @@ uint particlesLifetimeSteps;
 [numthreads(32,1,1)]
 void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
 {
-    const float gravity = -9.81;
-
-    particlesVel[id.x] += float3(0, 1, 0) * (gravity * deltaTime);
-    particlesPos[id.x] += particlesVel[id.x] * deltaTime;
-
-    if (particlesAliveTime[id.x] >= particlesLifetimeSteps)
+    if (particlesAliveTime[id.x] < particlesLifetimeSteps)
+    {
+        const float gravity = -9.81;
+        
+        particlesVel[id.x] += float3(0, 1, 0) * (gravity * deltaTime);
+        particlesPos[id.x] += particlesVel[id.x] * deltaTime;
+    }
+    else
     {
         particlesAliveTime[id.x] = 0;
         particlesVel[id.x] = 0.0;

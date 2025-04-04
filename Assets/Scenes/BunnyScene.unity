@@ -1613,9 +1613,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameras:
   - {fileID: 963194225}
-  - {fileID: 1968700531}
-  - {fileID: 35115595}
-  - {fileID: 1797849250}
   runBenchButton: {fileID: 1684804115}
   quitButton: {fileID: 747968173}
   loadingBenchText: {fileID: 294919275}

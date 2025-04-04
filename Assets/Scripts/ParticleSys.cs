@@ -27,7 +27,7 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private Mesh particleMesh;
     private readonly float particleRadius = 2f;
-    public readonly int particlesLifetimeSteps = 2002;
+    public readonly int particlesLifetimeSteps = 2001;
     public readonly int numParticlesXZ = 128;
     public readonly float deltaTime = 0.01f;
 
@@ -105,9 +105,10 @@ public class ParticleSys : MonoBehaviour
 
         lastScreenSize = new Vector2Int(Screen.width, Screen.height);
 
-        benchmarkTimingsScrSpace = new(particlesLifetimeSteps);
-        benchmarkTimingsVolStrc = new(particlesLifetimeSteps);
-        benchmarkTimingsHybrid = new(particlesLifetimeSteps);
+        int benchTimingsCount = particlesLifetimeSteps * GetComponent<BenchmarkManager>().GetCamerasCount();
+        benchmarkTimingsScrSpace = new(benchTimingsCount);
+        benchmarkTimingsVolStrc = new(benchTimingsCount);
+        benchmarkTimingsHybrid = new(benchTimingsCount);
     }
 
     public void SetupParticleSystemData(int particleLayersY)

@@ -101,6 +101,11 @@ public class BenchmarkManager : MonoBehaviour
         }
     }
 
+    public int GetCamerasCount()
+    {
+        return cameras.Count;
+    }
+
     IEnumerator WaitCameraChange()
     {
         yield return new WaitForSeconds(1f);
