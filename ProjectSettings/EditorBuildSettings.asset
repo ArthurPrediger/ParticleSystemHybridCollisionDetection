@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/BunnyScene.unity
+    guid: 6636fbd5a67458c46b8de2305661d759
   m_configObjects: {}

@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using TMPro;
 using UnityEngine;
@@ -154,23 +156,28 @@ public class BenchmarkManager : MonoBehaviour
 
         var benchmarkTimings = particleSys.GetBenchmarkTimings();
 
+        string filePath = Application.streamingAssetsPath + "/results.csv";
+        StreamWriter writer = new StreamWriter(filePath);
+
         foreach (var benchTiming in benchmarkTimings)
         {
+            writer.WriteLine($"{benchTiming.Item1};ms");
+
             benchTiming.Item2.RemoveAt(0);
-            float min = float.MaxValue;
-            float max = float.MinValue;
             float runningAverage = 0;
             for (int i = 0; i < benchTiming.Item2.Count; i++)
             {
                 runningAverage = (runningAverage * (float)i + benchTiming.Item2[i]) / (float)(i + 1);
-                max = Mathf.Max(max, benchTiming.Item2[i]);
-                min = Mathf.Min(min, benchTiming.Item2[i]);
+
+                writer.WriteLine($"{i};{benchTiming.Item2[i]}");
             }
 
-            resultsBenchText.text += benchTiming.Item1 + ": " + runningAverage.ToString("F4") + "ms   ";
-            resultsBenchText.text += "Min: " + min.ToString("F4") + "   Max: " + max.ToString("F4") + "\n";
+            writer.WriteLine($"Average;{runningAverage}");
+
+            resultsBenchText.text += benchTiming.Item1 + ": " + runningAverage.ToString("F4") + "ms\n";
         }
 
+        writer.Close();
         resultsBenchText.enabled = true;
     }
 

@@ -27,7 +27,7 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private Mesh particleMesh;
     private readonly float particleRadius = 2f;
-    public readonly int particlesLifetimeSteps = 2001;
+    public readonly int particlesLifetimeSteps = 2002;
     public readonly int numParticlesXZ = 128;
     public readonly float deltaTime = 0.01f;
 
@@ -89,9 +89,9 @@ public class ParticleSys : MonoBehaviour
     private const float infinityFloatGpu = 1.0e38f;
 
     //private Stopwatch benchmarkSw = new();
-    private List<float> benchmarkTimingsScrSpace = new();
-    private List<float> benchmarkTimingsVolStrc = new();
-    private List<float> benchmarkTimingsHybrid = new();
+    private List<float> benchmarkTimingsScrSpace;
+    private List<float> benchmarkTimingsVolStrc;
+    private List<float> benchmarkTimingsHybrid;
 
     private Vector2Int lastScreenSize = new();
 
@@ -104,6 +104,10 @@ public class ParticleSys : MonoBehaviour
         GetComponent<MeshFilter>().mesh = null;
 
         lastScreenSize = new Vector2Int(Screen.width, Screen.height);
+
+        benchmarkTimingsScrSpace = new(particlesLifetimeSteps);
+        benchmarkTimingsVolStrc = new(particlesLifetimeSteps);
+        benchmarkTimingsHybrid = new(particlesLifetimeSteps);
     }
 
     public void SetupParticleSystemData(int particleLayersY)
@@ -421,7 +425,7 @@ public class ParticleSys : MonoBehaviour
 
         DepthPrePass();
         NormalPrePass();
-        //textureImage.texture = depthTexture;
+        textureImage.texture = depthTexture;
 
         psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
@@ -532,9 +536,9 @@ public class ParticleSys : MonoBehaviour
 
     public void ResetBenchmarks()
     {
-        benchmarkTimingsScrSpace.Clear();
-        benchmarkTimingsVolStrc.Clear();
-        benchmarkTimingsHybrid.Clear();
+        benchmarkTimingsScrSpace?.Clear();
+        benchmarkTimingsVolStrc?.Clear();
+        benchmarkTimingsHybrid?.Clear();
     }
 
     private class BoundingBox
