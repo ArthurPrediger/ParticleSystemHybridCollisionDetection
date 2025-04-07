@@ -36,7 +36,7 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
     bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
 
-    if (isInsideScreen /*&& dot(cameraForward, (particlePos - cameraPos)) > 0.0*/)
+    if (isInsideScreen && dot(cameraForward, (particlePos - cameraPos)) > 0.0)
     {
         float depth = depthTexture.Load(int2(screenPos));
 
@@ -77,7 +77,7 @@ void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 
     bool isInsideScreen = (screenPos.x >= 0 && screenPos.x < screenSize.x) && (screenPos.y >= 0 && screenPos.y < screenSize.y);
 
-    if (isInsideScreen)
+    if (isInsideScreen && dot(cameraForward, (particlePos - cameraPos)) > 0.0)
     {
         float depth = depthTexture.Load(int2(screenPos));
 

@@ -20,6 +20,7 @@ public class BenchmarkManager : MonoBehaviour
     private float cameraActiveLifetimeSteps;
 
     private List<string> collisionDetectionMethods;
+    private List<string> collisionDetectionMethodsNames;
     private int curCollisionDetectionMethod = 0;
     
     private bool isBenchmarkRunning = false;
@@ -36,6 +37,10 @@ public class BenchmarkManager : MonoBehaviour
     private TextMeshProUGUI numParticlesBenchText;
     [SerializeField]
     private Scrollbar numParticlesBenchScroll;
+    [SerializeField]
+    private TextMeshProUGUI frameTimeText;
+    [SerializeField]
+    private TextMeshProUGUI activeColDetecMethodText;
 
     int curScrollbarStep = 0;
 
@@ -55,6 +60,8 @@ public class BenchmarkManager : MonoBehaviour
 
         loadingBenchText.enabled = false;
         resultsBenchText.enabled = false;
+        activeColDetecMethodText.enabled = false;
+        frameTimeText.enabled = true;
 
         particleSys = GetComponent<ParticleSys>();
 
@@ -64,6 +71,8 @@ public class BenchmarkManager : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        frameTimeText.text = (1f / Time.deltaTime).ToString("F1") + " FPS (" + (Time.deltaTime * 1000f).ToString("F1") + "ms)";
+
         if (!isBenchmarkRunning) return;
 
         if(cameraActiveTimeSteps++ >= cameraActiveLifetimeSteps)
@@ -77,12 +86,14 @@ public class BenchmarkManager : MonoBehaviour
                 if (curCollisionDetectionMethod < collisionDetectionMethods.Count)
                 {
                     particleSys.Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f);
+                    activeColDetecMethodText.text = collisionDetectionMethodsNames[curCollisionDetectionMethod];
                 }
                 else
                 {
                     curCollisionDetectionMethod = 0;
                     isBenchmarkRunning = false;
                     particleSys.enabled = false;
+                    activeColDetecMethodText.enabled = false;
                     runBenchButton.gameObject.SetActive(true);
                     quitButton.gameObject.SetActive(true);
                     numParticlesBenchText.enabled = true;
@@ -136,7 +147,10 @@ public class BenchmarkManager : MonoBehaviour
             "SetHybridCollisionActive",
         };
 
+        collisionDetectionMethodsNames = particleSys.GetCollisionDetectionMethodsNames();
+
         GetComponent<ParticleSys>().Invoke(collisionDetectionMethods[curCollisionDetectionMethod], 0f);
+        activeColDetecMethodText.text = collisionDetectionMethodsNames[curCollisionDetectionMethod];
     }
 
     private IEnumerator RunParticleSystemSetup()
@@ -147,6 +161,7 @@ public class BenchmarkManager : MonoBehaviour
         particleSys.SetupParticleSystemData(yLayers);
         particleSys.enabled = true;
         loadingBenchText.enabled = false;
+        activeColDetecMethodText.enabled = true;
         isBenchmarkRunning = true;
     }
 
@@ -164,22 +179,27 @@ public class BenchmarkManager : MonoBehaviour
         string filePath = Application.streamingAssetsPath + "/results.csv";
         StreamWriter writer = new StreamWriter(filePath);
 
+        int j = 0;
         foreach (var benchTiming in benchmarkTimings)
         {
-            writer.WriteLine($"{benchTiming.Item1};ms");
+            writer.WriteLine($"{collisionDetectionMethodsNames[j]};ms");
 
-            benchTiming.Item2.RemoveAt(0);
-            float runningAverage = 0;
-            for (int i = 0; i < benchTiming.Item2.Count; i++)
+            for(int i = cameras.Count - 1; i >= 0; i--)
             {
-                runningAverage = (runningAverage * (float)i + benchTiming.Item2[i]) / (float)(i + 1);
+                benchTiming.RemoveAt(particleSys.particlesLifetimeSteps * i);
+            }
+            float runningAverage = 0;
+            for (int i = 0; i < benchTiming.Count; i++)
+            {
+                runningAverage = (runningAverage * (float)i + benchTiming[i]) / (float)(i + 1);
 
-                writer.WriteLine($"{i};{benchTiming.Item2[i]}");
+                writer.WriteLine($"{i};{benchTiming[i]}");
             }
 
             writer.WriteLine($"Average;{runningAverage}");
 
-            resultsBenchText.text += benchTiming.Item1 + ": " + runningAverage.ToString("F4") + "ms\n";
+            resultsBenchText.text += collisionDetectionMethodsNames[j] + ": " + runningAverage.ToString("F4") + "ms\n";
+            j++;
         }
 
         writer.Close();

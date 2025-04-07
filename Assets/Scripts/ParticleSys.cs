@@ -23,6 +23,11 @@ public class ParticleSys : MonoBehaviour
     private int kernelIdCompDispArgs;
 
     [SerializeField]
+    private Shader DepthPrePassShader;
+    [SerializeField]
+    private Shader NormalPrePassShader;
+
+    [SerializeField]
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
@@ -426,7 +431,7 @@ public class ParticleSys : MonoBehaviour
 
         DepthPrePass();
         NormalPrePass();
-        textureImage.texture = depthTexture;
+        //textureImage.texture = depthTexture;
 
         psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
@@ -474,7 +479,7 @@ public class ParticleSys : MonoBehaviour
         {
             mainCamera.targetTexture = depthTexture;
 
-            mainCamera.RenderWithShader(Shader.Find("Custom/DepthPrePass"), null);
+            mainCamera.RenderWithShader(DepthPrePassShader, null);
 
             mainCamera.targetTexture = null;
         }
@@ -487,7 +492,7 @@ public class ParticleSys : MonoBehaviour
         {
             mainCamera.targetTexture = normalTexture;
 
-            mainCamera.RenderWithShader(Shader.Find("Custom/NormalPrePass"), null);
+            mainCamera.RenderWithShader(NormalPrePassShader, null);
 
             mainCamera.targetTexture = null;
         }
@@ -526,12 +531,21 @@ public class ParticleSys : MonoBehaviour
         return isScreenSpaceCollisionActive && isVolumeStructureCollisionActive;
     }
 
-    public List<Tuple<string, List<float>>> GetBenchmarkTimings()
+    public List<string> GetCollisionDetectionMethodsNames()
     {
         return new() {
-            Tuple.Create("Screen Space Collision Detection", benchmarkTimingsScrSpace),
-            Tuple.Create("Volume Structure Collision Detection", benchmarkTimingsVolStrc),
-            Tuple.Create("Hybrid Collision Detection",  benchmarkTimingsHybrid)
+            "Screen Space Collision Detection",
+            "Volume Structure Collision Detection",
+            "Hybrid Collision Detection",
+        };
+    }
+
+    public List<List<float>> GetBenchmarkTimings()
+    {
+        return new() {
+            benchmarkTimingsScrSpace,
+            benchmarkTimingsVolStrc,
+            benchmarkTimingsHybrid,
         };
     }
 
