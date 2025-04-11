@@ -31,10 +31,12 @@ public class ParticleSys : MonoBehaviour
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
-    private readonly float particleRadius = 2f;
+    public readonly float particleRadius = 2f;
     public readonly int particlesLifetimeSteps = 2001;
     public readonly int numParticlesXZ = 128;
+    public readonly float particlesOffsetXZ = 4f;
     public readonly float deltaTime = 0.01f;
+    public readonly float particleBounciness = 0.25f;
 
     private List<Vector3> particlesPos = new();
     private List<Vector3> particlesVel = new();
@@ -110,10 +112,16 @@ public class ParticleSys : MonoBehaviour
 
         lastScreenSize = new Vector2Int(Screen.width, Screen.height);
 
-        int benchTimingsCount = particlesLifetimeSteps * GetComponent<BenchmarkManager>().GetCamerasCount();
-        benchmarkTimingsScrSpace = new(benchTimingsCount);
-        benchmarkTimingsVolStrc = new(benchTimingsCount);
-        benchmarkTimingsHybrid = new(benchTimingsCount);
+        BenchmarkManager bm = GetComponent<BenchmarkManager>();
+        if(bm)
+        {
+            int benchTimingsCount = particlesLifetimeSteps * bm.GetCamerasCount();
+            benchmarkTimingsScrSpace = new(benchTimingsCount);
+            benchmarkTimingsVolStrc = new(benchTimingsCount);
+            benchmarkTimingsHybrid = new(benchTimingsCount);
+        }
+
+        //SetupParticleSystemData(1);
     }
 
     public void SetupParticleSystemData(int particleLayersY)
@@ -174,7 +182,7 @@ public class ParticleSys : MonoBehaviour
 
         // Initialization of particles positions and velocities
         float xzStart = (float)(xzDimension - 1) / 2f;
-        float offset = 4f;
+        float offset = particlesOffsetXZ;
         Vector3 starPos = new Vector3(xzStart, 0f, xzStart) * offset + transform.position;
         for (int i = 0; i < xzDimension; i++)
         {
@@ -439,6 +447,7 @@ public class ParticleSys : MonoBehaviour
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraForward", Camera.main.transform.forward);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psScreenSpaceCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
         psScreenSpaceCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
@@ -450,6 +459,7 @@ public class ParticleSys : MonoBehaviour
     void RunVolumeStructureCollisionDetection()
     {
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psVolumeStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
         psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
@@ -466,6 +476,7 @@ public class ParticleSys : MonoBehaviour
 
         // Volumes Structure Particle Collision setting and dispatch
         psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        psVolumeStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
         psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
         psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 

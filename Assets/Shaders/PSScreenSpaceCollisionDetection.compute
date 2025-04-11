@@ -14,6 +14,7 @@ float3 cameraPos;
 float3 cameraForward;
 float2 screenSize;
 float particleRadius;
+float particleBounciness;
 float deltaTime;
 
 RWTexture2D<float> depthTexture;
@@ -23,6 +24,7 @@ RWTexture2D<float4> normalTexture;
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 {
     float3 particlePos = particlesPos[id.x];
+    float3 particleVel = particlesVel[id.x];
 
     float4 viewPos = mul(viewMat, float4(particlePos, 1.0));
 
@@ -42,12 +44,20 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
         float eyeToParticleDist = length(particlePos - cameraPos);
         float distDifference = abs(depth - eyeToParticleDist);
+        
+        float3 surfaceNormal = normalTexture.Load(int2(screenPos)).xyz;
 
-        if(distDifference <= particleRadius)
+        if (distDifference <= particleRadius && dot(surfaceNormal, particleVel) < 0.0)
         {
-            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 4;
+            float3 newParticleDir = normalize(reflect(normalize(particlesVel[id.x]), surfaceNormal));
             const float gravity = -9.81;
+            float moveBack = 0.01;
+            if (eyeToParticleDist > depth) 
+                moveBack += particleRadius + distDifference;
+            else
+                moveBack += particleRadius - distDifference;
             particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
+            particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
         }
     }
 }
@@ -64,6 +74,7 @@ void AddParticleWithoutDepthCollision(int particleIndex)
 void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 {
     float3 particlePos = particlesPos[id.x];
+    float3 particleVel = particlesVel[id.x];
 
     float4 viewPos = mul(viewMat, float4(particlePos, 1.0));
 
@@ -83,12 +94,20 @@ void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 
         float eyeToParticleDist = length(particlePos - cameraPos);
         float distDifference = abs(depth - eyeToParticleDist);
+        
+        float3 surfaceNormal = normalTexture.Load(int2(screenPos)).xyz;
 
-        if (distDifference <= particleRadius)
+        if (distDifference <= particleRadius && dot(surfaceNormal, particleVel) < 0.0)
         {
-            particlesVel[id.x] = normalize(reflect(normalize(particlesVel[id.x]), normalTexture.Load(int2(screenPos)).xyz)) * 4;
+            float3 newParticleDir = normalize(reflect(normalize(particlesVel[id.x]), surfaceNormal));
             const float gravity = -9.81;
+            float moveBack = 0.01;
+            if (eyeToParticleDist > depth) 
+                moveBack += particleRadius + distDifference;
+            else
+                moveBack += particleRadius - distDifference;
             particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
+            particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
         }
         else if (eyeToParticleDist > depth)
         {

@@ -27,6 +27,7 @@ RWStructuredBuffer<float3> particlesVel;
 //ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 RWStructuredBuffer<uint> particlesWithoutDepthCollision;
 float particleRadius;
+float particleBounciness;
 float deltaTime;
 uint maxStackSize;
 
@@ -306,7 +307,7 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                     
                     const float gravity = -9.81;
                     particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
-                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * 4;
+                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * particleBounciness * length(particlesVel[particleIndex]);
                     
                     break;
                 }
