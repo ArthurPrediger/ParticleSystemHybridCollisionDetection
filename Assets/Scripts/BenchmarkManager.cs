@@ -1,3 +1,6 @@
+#define PERFORMANCE_BENCHMARK
+//#define ACCURACY_BENCHMARK
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -99,7 +102,11 @@ public class BenchmarkManager : MonoBehaviour
                     numParticlesBenchText.enabled = true;
                     numParticlesBenchScroll.gameObject.SetActive(true);
 
-                    ComputePresentResults();
+#if PERFORMANCE_BENCHMARK
+                    ComputePresentPerformanceResults();
+#elif ACCURACY_BENCHMARK
+                    ComputePresentAccuracyResults();
+#endif
                 }
             }
 
@@ -138,7 +145,11 @@ public class BenchmarkManager : MonoBehaviour
         numParticlesBenchScroll.gameObject.SetActive(false);
         Canvas.ForceUpdateCanvases();
 
-        particleSys.ResetBenchmarks();
+#if PERFORMANCE_BENCHMARK
+        particleSys.ResetBenchmarkTimings();
+#elif ACCURACY_BENCHMARK
+        particleSys.ResetBenchmarkCollisons();
+#endif
         StartCoroutine(RunParticleSystemSetup());
 
         collisionDetectionMethods = new() {
@@ -170,7 +181,8 @@ public class BenchmarkManager : MonoBehaviour
         Application.Quit();
     }
 
-    void ComputePresentResults()
+#if PERFORMANCE_BENCHMARK
+    void ComputePresentPerformanceResults()
     {
         resultsBenchText.text = "<align=center>Averages of Simulation Steps Results:</align>\n\n";
 
@@ -205,6 +217,41 @@ public class BenchmarkManager : MonoBehaviour
         writer.Close();
         resultsBenchText.enabled = true;
     }
+#endif
+
+#if ACCURACY_BENCHMARK
+    void ComputePresentAccuracyResults()
+    {
+        resultsBenchText.text = "<align=center>Total Collisions of the Simulation Results:</align>\n\n";
+
+        var benchmarkCollisons = particleSys.GetBenchmarkCollisions();
+
+        string filePath = Application.streamingAssetsPath + "/results.csv";
+        StreamWriter writer = new StreamWriter(filePath);
+
+        int j = 0;
+        foreach (var benchCollisons in benchmarkCollisons)
+        {
+            writer.WriteLine($"{collisionDetectionMethodsNames[j]};collisions");
+
+            int totalCollisons = 0;
+            for (int i = 0; i < benchCollisons.Length; i++)
+            {
+                totalCollisons += benchCollisons[i];
+
+                writer.WriteLine($"{i};{benchCollisons[i]}");
+            }
+
+            writer.WriteLine($"Total collisions;{totalCollisons}");
+
+            resultsBenchText.text += collisionDetectionMethodsNames[j] + ": " + totalCollisons.ToString() + " collisions\n";
+            j++;
+        }
+
+        writer.Close();
+        resultsBenchText.enabled = true;
+    }
+#endif
 
     public void SetNumParticlesBenchmark(Single single)
     {

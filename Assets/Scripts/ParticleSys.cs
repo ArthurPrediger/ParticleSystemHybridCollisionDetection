@@ -1,3 +1,6 @@
+#define PERFORMANCE_BENCHMARK
+//#define ACCURACY_BENCHMARK
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -95,12 +98,20 @@ public class ParticleSys : MonoBehaviour
 
     private const float infinityFloatGpu = 1.0e38f;
 
+    private Vector2Int lastScreenSize = new();
+
     //private Stopwatch benchmarkSw = new();
+#if PERFORMANCE_BENCHMARK
     private List<float> benchmarkTimingsScrSpace;
     private List<float> benchmarkTimingsVolStrc;
     private List<float> benchmarkTimingsHybrid;
+#endif
 
-    private Vector2Int lastScreenSize = new();
+#if ACCURACY_BENCHMARK
+    private ComputeBuffer numCollisionsScrSpaceDepthCb;
+    private ComputeBuffer numCollisionsVolStructureCb;
+    private ComputeBuffer numCollisionsHybridCb;
+#endif
 
     // Start is called before the first frame update
     void Start()
@@ -112,6 +123,7 @@ public class ParticleSys : MonoBehaviour
 
         lastScreenSize = new Vector2Int(Screen.width, Screen.height);
 
+#if PERFORMANCE_BENCHMARK
         BenchmarkManager bm = GetComponent<BenchmarkManager>();
         if(bm)
         {
@@ -120,6 +132,7 @@ public class ParticleSys : MonoBehaviour
             benchmarkTimingsVolStrc = new(benchTimingsCount);
             benchmarkTimingsHybrid = new(benchTimingsCount);
         }
+#endif
 
         //SetupParticleSystemData(1);
     }
@@ -179,6 +192,15 @@ public class ParticleSys : MonoBehaviour
         particlesInitPosCB = null;
         particlesAliveTimeCB?.Release();
         particlesAliveTimeCB = null;
+
+#if ACCURACY_BENCHMARK
+        numCollisionsScrSpaceDepthCb?.Release();
+        numCollisionsScrSpaceDepthCb = null;
+        numCollisionsVolStructureCb?.Release();
+        numCollisionsVolStructureCb = null;
+        numCollisionsHybridCb?.Release();
+        numCollisionsHybridCb = null;
+#endif
 
         // Initialization of particles positions and velocities
         float xzStart = (float)(xzDimension - 1) / 2f;
@@ -267,6 +289,27 @@ public class ParticleSys : MonoBehaviour
 
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
+
+#if ACCURACY_BENCHMARK
+        List<int> numCollisionsZeroed = new(particlesPos.Count);
+        for (int i = 0; i < numCollisionsZeroed.Count; i++)
+        {
+            numCollisionsZeroed.Add(0);
+        }
+
+        numCollisionsScrSpaceDepthCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        numCollisionsScrSpaceDepthCb.SetData(numCollisionsZeroed);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
+
+        numCollisionsVolStructureCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        numCollisionsVolStructureCb.SetData(numCollisionsZeroed);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "numCollisions", numCollisionsVolStructureCb);
+
+        numCollisionsHybridCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        numCollisionsHybridCb.SetData(numCollisionsZeroed);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+#endif
     }
 
     private void SetupDepthAndNormalPrePassBuffers()
@@ -353,21 +396,27 @@ public class ParticleSys : MonoBehaviour
         if (IsScreenSpaceCollisionActive())
         {
             RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetc);
+#if PERFORMANCE_BENCHMARK
             benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
+#endif
         }
 
         // Volumes Structure Particle Collision setting and dispatch
         if (IsVolumeStructureCollisionActive())
         {
             RunVolumeStructureCollisionDetection();
+#if PERFORMANCE_BENCHMARK
             benchmarkTimingsVolStrc.Add(Time.deltaTime * 1000f);
+#endif
         }
 
         // Screen Space and Volumes Structure Particle Collision Hybrid Method setting and dispatch
         if (IsHybridCollisionActive())
         {
             RunHybridCollisionDetection();
+#if PERFORMANCE_BENCHMARK
             benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
+#endif
         }
 
         // Particle System reaction update setting and dispatch
@@ -425,6 +474,15 @@ public class ParticleSys : MonoBehaviour
         commandBuf = null;
         if(depthTexture) depthTexture.Release();
         if(normalTexture) normalTexture.Release();
+
+#if ACCURACY_BENCHMARK
+        numCollisionsScrSpaceDepthCb?.Release();
+        numCollisionsScrSpaceDepthCb = null;
+        numCollisionsVolStructureCb?.Release();
+        numCollisionsVolStructureCb = null;
+        numCollisionsHybridCb?.Release();
+        numCollisionsHybridCb = null;
+#endif
     }
 
     void RunScreenSpaceCollisionDetection(int kernelId)
@@ -551,6 +609,7 @@ public class ParticleSys : MonoBehaviour
         };
     }
 
+#if PERFORMANCE_BENCHMARK
     public List<List<float>> GetBenchmarkTimings()
     {
         return new() {
@@ -560,12 +619,43 @@ public class ParticleSys : MonoBehaviour
         };
     }
 
-    public void ResetBenchmarks()
+    public void ResetBenchmarkTimings()
     {
         benchmarkTimingsScrSpace?.Clear();
         benchmarkTimingsVolStrc?.Clear();
         benchmarkTimingsHybrid?.Clear();
     }
+#endif
+
+#if ACCURACY_BENCHMARK
+    public List<int[]> GetBenchmarkCollisions()
+    {
+        int[] numCollisionsScrSpaceDepth = new int[particlesPos.Count];
+        numCollisionsScrSpaceDepthCb?.GetData(numCollisionsScrSpaceDepth);
+        int[] numCollisionsVolStructure = new int[particlesPos.Count];
+        numCollisionsVolStructureCb?.GetData(numCollisionsVolStructure);
+        int[] numCollisionsHybrid = new int[particlesPos.Count];
+        numCollisionsHybridCb?.GetData(numCollisionsHybrid);
+
+        return new() { 
+            numCollisionsScrSpaceDepth, 
+            numCollisionsVolStructure, 
+            numCollisionsHybrid };
+    }
+
+    public void ResetBenchmarkCollisons()
+    {
+        List<int> numCollisionsZeroed = new(particlesPos.Count);
+        for (int i = 0; i < numCollisionsZeroed.Count; i++)
+        {
+            numCollisionsZeroed.Add(0);
+        }
+
+        numCollisionsScrSpaceDepthCb?.SetData(numCollisionsZeroed);
+        numCollisionsVolStructureCb?.SetData(numCollisionsZeroed);
+        numCollisionsHybridCb?.SetData(numCollisionsZeroed);
+    }
+#endif
 
     private class BoundingBox
     {

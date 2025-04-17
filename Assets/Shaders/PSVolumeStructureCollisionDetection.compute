@@ -2,7 +2,9 @@
 #pragma kernel PSVolumeStructureCollisionDetection
 #pragma kernel PSVolumeStructureCollisionDetectionHybrid
 
-//Maximum stackdepth
+//#define PERFORMANCE_BENCHMARK
+//#define ACCURACY_BENCHMARK
+
 #define FLOAT_MAX 1.0e38
 
 struct BvhSphereNode
@@ -30,6 +32,10 @@ float particleRadius;
 float particleBounciness;
 float deltaTime;
 uint maxStackSize;
+
+#ifdef ACCURACY_BENCHMARK
+    RWStructuredBuffer<int> numCollisions;
+#endif
 
 bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
 {
@@ -308,6 +314,10 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                     const float gravity = -9.81;
                     particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
                     particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * particleBounciness * length(particlesVel[particleIndex]);
+                    
+#ifdef ACCURACY_BENCHMARK
+                    numCollisions[particleIndex]++;
+#endif
                     
                     break;
                 }

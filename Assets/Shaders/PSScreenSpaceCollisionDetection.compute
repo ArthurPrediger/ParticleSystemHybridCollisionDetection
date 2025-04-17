@@ -2,6 +2,9 @@
 #pragma kernel PSScreenSpaceCollisionDetection
 #pragma kernel PSScreenSpaceCollisionDetectionHybrid
 
+//#define PERFORMANCE_BENCHMARK
+//#define ACCURACY_BENCHMARK
+
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 //AppendStructuredBuffer<int> particlesWithoutDepthCollision;
@@ -19,6 +22,10 @@ float deltaTime;
 
 RWTexture2D<float> depthTexture;
 RWTexture2D<float4> normalTexture;
+
+#ifdef ACCURACY_BENCHMARK
+    RWStructuredBuffer<int> numCollisions;
+#endif
 
 [numthreads(32,1,1)]
 void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
@@ -58,6 +65,10 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
                 moveBack += particleRadius - distDifference;
             particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
             particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
+            
+#ifdef ACCURACY_BENCHMARK
+            numCollisions[id.x]++;
+#endif
         }
     }
 }
@@ -108,6 +119,10 @@ void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
                 moveBack += particleRadius - distDifference;
             particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
             particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
+            
+#ifdef ACCURACY_BENCHMARK
+            numCollisions[id.x]++;
+#endif
         }
         else if (eyeToParticleDist > depth)
         {
