@@ -13,6 +13,8 @@ public class CameraMovement : MonoBehaviour
     private float rotationX = 0f;
     private float rotationY = 0f;
 
+    public bool movementEnabled = false;
+
     void Start()
     {
         // Initialize rotationX and rotationY based on the camera's current rotation
@@ -20,7 +22,7 @@ public class CameraMovement : MonoBehaviour
         rotationX = currentRotation.x;
         rotationY = currentRotation.y;
 
-        enabled = false;
+        enabled = movementEnabled;
     }
 
     void Update()

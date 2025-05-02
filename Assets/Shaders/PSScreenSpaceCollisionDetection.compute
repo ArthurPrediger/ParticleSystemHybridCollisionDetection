@@ -3,7 +3,7 @@
 #pragma kernel PSScreenSpaceCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
@@ -13,6 +13,7 @@ RWStructuredBuffer<uint> numParticlesWithoutDepthCollision : register(u0);
 matrix projectionMat;
 matrix viewMat;
 matrix inverseProjectionMat;
+matrix inverseViewMat;
 float3 cameraPos;
 float3 cameraForward;
 float2 screenSize;
@@ -47,25 +48,24 @@ void PSScreenSpaceCollisionDetection (uint3 id : SV_DispatchThreadID)
 
     if (isInsideScreen && dot(cameraForward, (particlePos - cameraPos)) > 0.0)
     {
-        float depth = depthTexture.Load(int2(screenPos));
+        float depth = depthTexture.Load(int3(screenPos, 0));
 
         float eyeToParticleDist = length(particlePos - cameraPos);
-        float distDifference = abs(depth - eyeToParticleDist);
+        float distDifference = abs(eyeToParticleDist - depth);
         
-        float3 surfaceNormal = normalTexture.Load(int2(screenPos)).xyz;
+        float3 surfaceNormal = normalTexture.Load(int3(screenPos, 0)).xyz;
 
-        if (distDifference <= particleRadius && dot(surfaceNormal, particleVel) < 0.0)
-        {
-            float3 newParticleDir = normalize(reflect(normalize(particlesVel[id.x]), surfaceNormal));
+        bool intoSurface = dot(surfaceNormal, particleVel) < 0.0;
+        
+        if (distDifference <= particleRadius && intoSurface)
+        {            
+            float3 particleDir = normalize(particleVel);
+            float3 reflectedDir = normalize(reflect(particleDir, surfaceNormal));
             const float gravity = -9.81;
-            float moveBack = 0.01;
-            if (eyeToParticleDist > depth) 
-                moveBack += particleRadius + distDifference;
-            else
-                moveBack += particleRadius - distDifference;
-            particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
-            particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
             
+            particlesPos[id.x] -= particleVel * deltaTime;
+            particlesVel[id.x] = reflectedDir * (particleBounciness * length(particleVel)) + float3(0, -1.01, 0) * (gravity * deltaTime);
+          
 #ifdef ACCURACY_BENCHMARK
             numCollisions[id.x]++;
 #endif
@@ -101,28 +101,30 @@ void PSScreenSpaceCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 
     if (isInsideScreen && dot(cameraForward, (particlePos - cameraPos)) > 0.0)
     {
-        float depth = depthTexture.Load(int2(screenPos));
+        float depth = depthTexture.Load(int3(screenPos, 0));
 
         float eyeToParticleDist = length(particlePos - cameraPos);
-        float distDifference = abs(depth - eyeToParticleDist);
+        float distDifference = abs(eyeToParticleDist - depth);
         
-        float3 surfaceNormal = normalTexture.Load(int2(screenPos)).xyz;
+        float3 surfaceNormal = normalTexture.Load(int3(screenPos, 0)).xyz;
 
-        if (distDifference <= particleRadius && dot(surfaceNormal, particleVel) < 0.0)
+        bool intoSurface = dot(surfaceNormal, particleVel) < 0.0;
+
+        if (distDifference <= particleRadius)
         {
-            float3 newParticleDir = normalize(reflect(normalize(particlesVel[id.x]), surfaceNormal));
-            const float gravity = -9.81;
-            float moveBack = 0.01;
-            if (eyeToParticleDist > depth) 
-                moveBack += particleRadius + distDifference;
-            else
-                moveBack += particleRadius - distDifference;
-            particlesPos[id.x] += float3(0, -1, 0) * (gravity * deltaTime);
-            particlesVel[id.x] = newParticleDir * particleBounciness * length(particleVel);
+            if(intoSurface)
+            {
+                float3 particleDir = normalize(particleVel);
+                float3 reflectedDir = normalize(reflect(particleDir, surfaceNormal));
+                const float gravity = -9.81;
+            
+                particlesPos[id.x] -= particleVel * deltaTime;
+                particlesVel[id.x] = reflectedDir * (particleBounciness * length(particleVel)) + float3(0, -1.01, 0) * (gravity * deltaTime);
             
 #ifdef ACCURACY_BENCHMARK
-            numCollisions[id.x]++;
+                numCollisions[id.x]++;
 #endif
+            }
         }
         else if (eyeToParticleDist > depth)
         {

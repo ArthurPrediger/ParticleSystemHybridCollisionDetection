@@ -1,5 +1,5 @@
-#define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+//#define PERFORMANCE_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections;

@@ -805,6 +805,12 @@ MonoBehaviour:
   NormalPrePassShader: {fileID: 4800000, guid: 641011e9799c406469057f29990eb720, type: 3}
   instancedParticlesMat: {fileID: 2100000, guid: 89bf4ae66bc8c514f9fac6aafc8583cd, type: 2}
   particleMesh: {fileID: 289301614986012343, guid: c372781b56ac524449c0ecc77d8968da, type: 3}
+  particleRadius: 0.2
+  particlesLifetimeSteps: 4001
+  numParticlesXZ: 7
+  particlesOffsetXZ: 1
+  deltaTime: 0.001
+  particleBounciness: 0.5
   textureImage: {fileID: 780729455}
   sphericalNodePrefab: {fileID: 5209843910144339430, guid: efb45e3b99903f041a4a3e4f40865e55, type: 3}
 --- !u!23 &888686343

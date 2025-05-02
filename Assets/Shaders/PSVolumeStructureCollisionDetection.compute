@@ -3,7 +3,7 @@
 #pragma kernel PSVolumeStructureCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 #define FLOAT_MAX 1.0e38
 
@@ -37,13 +37,8 @@ uint maxStackSize;
     RWStructuredBuffer<int> numCollisions;
 #endif
 
-bool ParticleSphereIntersection(int particleIndex, BvhSphereNode node)
-{
-    float3 partInitPos = particlesPos[particleIndex];
-    float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
-    float3 partVel = particlesVel[particleIndex];
-    float3 partDir = normalize(particlesVel[particleIndex]);
-    
+bool ParticleSphereIntersection(float3 partInitPos, float3 partEndPos, float3 partDir, BvhSphereNode node)
+{    
     float radiusSum = particleRadius + node.radius;
     
     if (distance(partInitPos, node.center) < radiusSum)
@@ -164,19 +159,15 @@ bool RaySphereIntersection(float3 rayOrigin, float3 rayDir, float3 center, float
     return true;
 }
 
-bool ParticleTriangleIntersection(int particleIndex, BvhTriangle tri, out float3 collisionPoint)
+bool ParticleTriangleIntersection(float3 partInitPos, float3 partEndPos, float3 particleDir, BvhTriangle tri, out float3 collisionPoint)
 {
-    float3 partInitPos = particlesPos[particleIndex];
-    float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
-    float3 particleVel = particlesVel[particleIndex];
-    float3 particleDir = normalize(particlesVel[particleIndex]);
     bool rayIntersected = false;
     collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
     float3 curCollisionPoint = float3(1, 1, 1) * FLOAT_MAX;
     
     float3 triNormal = normalize(cross((tri.vertices[1] - tri.vertices[0]), (tri.vertices[2] - tri.vertices[0])));
     
-    if (dot(triNormal, particlesVel[particleIndex]) > 0)
+    if (dot(triNormal, particleDir) > 0)
         triNormal = -triNormal;
     
     float3 triOffset = triNormal * particleRadius;
@@ -248,17 +239,18 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
     bvhStackIndices[threadId] = 0;
     bvhStack[stackBase + bvhStackIndices[threadId]++] = 0; // Push root node onto stack
     
+    float3 partInitPos = particlesPos[particleIndex];
+    float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
+    float3 partVel = particlesVel[particleIndex];
+    float3 partDir = normalize(particlesVel[particleIndex]);
+    
     while (bvhStackIndices[threadId] > 0)
     {
         int nodeIndex = bvhStack[stackBase + --bvhStackIndices[threadId]];
         BvhSphereNode node = bvh[nodeIndex];
         
-        if (ParticleSphereIntersection(particleIndex, node))
-        {
-            float3 partInitPos = particlesPos[particleIndex];
-            float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
-            float3 partDir = normalize(particlesVel[particleIndex]);
-            
+        if (ParticleSphereIntersection(partInitPos, partEndPos, partDir, node))
+        {            
             if (node.childOrStartNegated > 0)
             {
                 BvhSphereNode child0 = bvh[node.childOrStartNegated];
@@ -280,16 +272,20 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                 }
             }
             else
-            {               
+            {   
+                float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
+                float3 partVel = particlesVel[particleIndex];
+                
                 BvhTriangle collisionTri;
                 float3 collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
                 bool collided = false;
+                
                 for (int i = 0; i < node.childOrSize; i++)
                 {
                     BvhTriangle tri = bvhTriangles[-node.childOrStartNegated + i];
                     float3 curCollisionPoint = float3(1, 1, 1) * FLOAT_MAX;
                     
-                    if (ParticleTriangleIntersection(particleIndex, tri, curCollisionPoint))
+                    if (ParticleTriangleIntersection(partInitPos, partEndPos, partDir, tri, curCollisionPoint))
                     {
                         float3 diffInitCurCol = partInitPos - curCollisionPoint;
                         float3 diffInitPrevCol = partInitPos - collisionPoint;
@@ -302,18 +298,22 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                         }                     
                     }
                 }
+                
                 if (collided)
                 {
                     float3 triNormal = normalize(cross(
                         (collisionTri.vertices[1] - collisionTri.vertices[0]),
                         (collisionTri.vertices[2] - collisionTri.vertices[0])));
 
-                    if (dot(triNormal, particlesVel[particleIndex]) > 0)
+                    if (dot(triNormal, partDir) > 0)
                         triNormal = -triNormal;
                     
+                    float3 reflectedDir = normalize(reflect(partDir, triNormal));
+                    float collisionToEndDist = length(partEndPos - collisionPoint);
+                    
                     const float gravity = -9.81;
-                    particlesPos[particleIndex] = collisionPoint + float3(0, -1, 0) * (gravity * deltaTime);
-                    particlesVel[particleIndex] = normalize(reflect(partDir, triNormal)) * particleBounciness * length(particlesVel[particleIndex]);
+                    particlesPos[particleIndex] = collisionPoint + reflectedDir * (collisionToEndDist * particleBounciness);
+                    particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) + float3(0, -1.01, 0) * (gravity * deltaTime);
                     
 #ifdef ACCURACY_BENCHMARK
                     numCollisions[particleIndex]++;

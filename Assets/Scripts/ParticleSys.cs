@@ -1,5 +1,5 @@
-#define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+//#define PERFORMANCE_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections.Generic;
@@ -34,12 +34,12 @@ public class ParticleSys : MonoBehaviour
     private Material instancedParticlesMat;
     [SerializeField]
     private Mesh particleMesh;
-    public readonly float particleRadius = 2f;
-    public readonly int particlesLifetimeSteps = 2001;
-    public readonly int numParticlesXZ = 128;
-    public readonly float particlesOffsetXZ = 4f;
-    public readonly float deltaTime = 0.01f;
-    public readonly float particleBounciness = 0.25f;
+    public float particleRadius = 2f;
+    public int particlesLifetimeSteps = 2001;
+    public int numParticlesXZ = 128;
+    public float particlesOffsetXZ = 4f;
+    public float deltaTime = 0.01f;
+    public float particleBounciness = 0.25f;
 
     private List<Vector3> particlesPos = new();
     private List<Vector3> particlesVel = new();
@@ -497,11 +497,12 @@ public class ParticleSys : MonoBehaviour
 
         DepthPrePass();
         NormalPrePass();
-        //textureImage.texture = depthTexture;
+        textureImage.texture = depthTexture;
 
         psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
         psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
+        psScreenSpaceCollisionDetectionCs.SetMatrix("inverseViewMat", Camera.main.worldToCameraMatrix.inverse);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
         psScreenSpaceCollisionDetectionCs.SetVector("cameraForward", Camera.main.transform.forward);
         psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
