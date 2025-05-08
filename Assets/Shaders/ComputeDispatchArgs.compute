@@ -1,17 +1,16 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel ComputeDispatchArgs
 
-#define GROUP_THREAD_SIZE 32
-
 RWStructuredBuffer<uint> numParticlesWithoutDepthCollision; // Counter buffer
 RWStructuredBuffer<uint> dispatchArgs; // Indirect dispatch arguments (3 uints)
+int threadGroupSize;
 
 [numthreads(1,1,1)]
 void ComputeDispatchArgs (uint3 id : SV_DispatchThreadID)
 {
     if (id.x == 0)
     {
-        dispatchArgs[0] = (numParticlesWithoutDepthCollision[0] + GROUP_THREAD_SIZE - (numParticlesWithoutDepthCollision[0] % GROUP_THREAD_SIZE)) / GROUP_THREAD_SIZE;
+        dispatchArgs[0] = (numParticlesWithoutDepthCollision[0] + threadGroupSize - (numParticlesWithoutDepthCollision[0] % threadGroupSize)) / threadGroupSize;
         dispatchArgs[1] = 1; // Y threads
         dispatchArgs[2] = 1; // Z threads
     }

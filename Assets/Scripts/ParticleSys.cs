@@ -111,7 +111,7 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer numCollisionsScrSpaceDepthCb;
     private ComputeBuffer numCollisionsVolStructureCb;
     private ComputeBuffer numCollisionsHybridCb;
-    private ComputeBuffer numCollisionsHybridVolCb;
+    //private ComputeBuffer numCollisionsHybridVolCb;
 #endif
 
     // Start is called before the first frame update
@@ -206,6 +206,8 @@ public class ParticleSys : MonoBehaviour
             {
                 for (int k = 0; k < xzDimension; k++)
                 {
+                    if (particlesPos.Count >= 65535 * 32) break;
+
                     particlesPos.Add((starPos - new Vector3(offset * i, -(offset * j * 4), offset * k)));
                     particlesVel.Add(Vector3.zero);
                     particlesAliveTime.Add(0);
@@ -215,11 +217,14 @@ public class ParticleSys : MonoBehaviour
 
         threadGroupsX = Mathf.CeilToInt((float)particlesPos.Count / (float)threadGroupSize);
 
-        for (int i = particlesPos.Count % threadGroupSize; i < threadGroupSize; i++)
+        if(particlesPos.Count % threadGroupSize != 0)
         {
-            particlesPos.Add(Vector3.one * infinityFloatGpu);
-            particlesVel.Add(Vector3.zero);
-            particlesAliveTime.Add(0);
+            for (int i = particlesPos.Count % threadGroupSize; i < threadGroupSize; i++)
+            {
+                particlesPos.Add(Vector3.one * infinityFloatGpu);
+                particlesVel.Add(Vector3.zero);
+                particlesAliveTime.Add(0);
+            }
         }
 
         // Particles Positions gpu buffer setting
@@ -291,8 +296,8 @@ public class ParticleSys : MonoBehaviour
         numCollisionsVolStructureCb = null;
         numCollisionsHybridCb?.Release();
         numCollisionsHybridCb = null;
-        numCollisionsHybridVolCb?.Release();
-        numCollisionsHybridVolCb = null;
+        //numCollisionsHybridVolCb?.Release();
+        //numCollisionsHybridVolCb = null;
 
         List<int> numCollisionsZeroed = new();
         for (int i = 0; i < particlesPos.Count; i++)
@@ -311,10 +316,11 @@ public class ParticleSys : MonoBehaviour
         numCollisionsHybridCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsHybridCb.SetData(numCollisionsZeroed);
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridCb);
 
-        numCollisionsHybridVolCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
-        numCollisionsHybridVolCb.SetData(numCollisionsZeroed);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridVolCb);
+        //numCollisionsHybridVolCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        //numCollisionsHybridVolCb.SetData(numCollisionsZeroed);
+        //psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridVolCb);
 #endif
     }
 
@@ -488,8 +494,8 @@ public class ParticleSys : MonoBehaviour
         numCollisionsVolStructureCb = null;
         numCollisionsHybridCb?.Release();
         numCollisionsHybridCb = null;
-        numCollisionsHybridVolCb?.Release();
-        numCollisionsHybridVolCb = null;
+        //numCollisionsHybridVolCb?.Release();
+        //numCollisionsHybridVolCb = null;
 #endif
     }
 
@@ -539,6 +545,7 @@ public class ParticleSys : MonoBehaviour
         RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetcHybrid);
 
         //Finding the number of particles that do not complete a thread group
+        computeDispatchArgsCs.SetInt("threadGroupSize", threadGroupSize);
         computeDispatchArgsCs.Dispatch(kernelIdCompDispArgs, 1, 1, 1);
 
         // Volumes Structure Particle Collision setting and dispatch
@@ -615,7 +622,7 @@ public class ParticleSys : MonoBehaviour
             "Screen Space Collision Detection",
             "Volume Structure Collision Detection",
             "Hybrid Depth Collision Detection",
-            "Hybrid Volume Collision Detection"
+            //"Hybrid Volume Collision Detection"
         };
     }
 
@@ -646,14 +653,14 @@ public class ParticleSys : MonoBehaviour
         numCollisionsVolStructureCb?.GetData(numCollisionsVolStructure);
         int[] numCollisionsHybrid = new int[particlesPos.Count];
         numCollisionsHybridCb?.GetData(numCollisionsHybrid);
-        int[] numCollisionsHybridVol = new int[particlesPos.Count];
-        numCollisionsHybridVolCb?.GetData(numCollisionsHybridVol);
+        //int[] numCollisionsHybridVol = new int[particlesPos.Count];
+        //numCollisionsHybridVolCb?.GetData(numCollisionsHybridVol);
 
         return new() { 
             numCollisionsScrSpaceDepth, 
             numCollisionsVolStructure, 
             numCollisionsHybrid,
-            numCollisionsHybridVol
+            //numCollisionsHybridVol
         };
     }
 
@@ -668,7 +675,7 @@ public class ParticleSys : MonoBehaviour
         numCollisionsScrSpaceDepthCb?.SetData(numCollisionsZeroed);
         numCollisionsVolStructureCb?.SetData(numCollisionsZeroed);
         numCollisionsHybridCb?.SetData(numCollisionsZeroed);
-        numCollisionsHybridVolCb?.SetData(numCollisionsZeroed);
+        //numCollisionsHybridVolCb?.SetData(numCollisionsZeroed);
     }
 #endif
 

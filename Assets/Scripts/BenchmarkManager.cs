@@ -168,7 +168,7 @@ public class BenchmarkManager : MonoBehaviour
     {
         yield return null;
 
-        int yLayers = (int)Mathf.Pow(2f, curScrollbarStep);
+        int yLayers = (1 << curScrollbarStep);
         particleSys.SetupParticleSystemData(yLayers);
         particleSys.enabled = true;
         loadingBenchText.enabled = false;
@@ -257,6 +257,6 @@ public class BenchmarkManager : MonoBehaviour
     {
         curScrollbarStep = Mathf.FloorToInt(Mathf.Max((single - 0.0001f), 0f) * (float)numParticlesBenchScroll.numberOfSteps);
 
-        numParticlesBenchText.text = "Number of Particles " + (particleSys.numParticlesXZ * particleSys.numParticlesXZ * (int)Mathf.Pow(2f, curScrollbarStep)).ToString();
+        numParticlesBenchText.text = "Number of Particles " + Mathf.Min((particleSys.numParticlesXZ * particleSys.numParticlesXZ * (1 << curScrollbarStep)), 65535 * 32).ToString();
     }
 }

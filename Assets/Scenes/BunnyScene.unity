@@ -752,7 +752,7 @@ MonoBehaviour:
   m_Direction: 0
   m_Value: 0
   m_Size: 0.1
-  m_NumberOfSteps: 7
+  m_NumberOfSteps: 8
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls:
