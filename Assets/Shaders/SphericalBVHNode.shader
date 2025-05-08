@@ -47,7 +47,7 @@ Shader "Unlit/SphericalBVHNode"
                 float3 worldNormal = normalize(i.worldNormal);
                 float3 cameraDir = normalize(i.cameraPos - worldPos);
 
-                if((1 - abs(dot(worldNormal, cameraDir))) < 0.6)
+                if((1 - abs(dot(worldNormal, cameraDir))) < 0.75)
                 {
                     discard;
                 }

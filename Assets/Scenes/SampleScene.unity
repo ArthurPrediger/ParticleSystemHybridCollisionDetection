@@ -970,6 +970,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 8
   mouseSensitivity: 1024
+  movementEnabled: 1
 --- !u!1 &1015805700
 GameObject:
   m_ObjectHideFlags: 0

@@ -29,9 +29,10 @@ public class CameraMovement : MonoBehaviour
     {
         if (Input.GetMouseButton((int)MouseButton.LeftMouse))
         {
+            float dt = Mathf.Min(Time.deltaTime, 0.1f);
             // Mouse input for looking around
-            rotationX -= Mathf.Clamp(Input.GetAxis("Mouse Y"), -1.0f, 1.0f) * mouseSensitivity * Time.deltaTime;
-            rotationY += Mathf.Clamp(Input.GetAxis("Mouse X"), -1.0f, 1.0f) * mouseSensitivity * Time.deltaTime;
+            rotationX -= Mathf.Clamp(Input.GetAxis("Mouse Y"), -1.0f, 1.0f) * mouseSensitivity * dt;
+            rotationY += Mathf.Clamp(Input.GetAxis("Mouse X"), -1.0f, 1.0f) * mouseSensitivity * dt;
 
             // Clamp the up/down rotation to prevent the camera from flipping over
             rotationX = Mathf.Clamp(rotationX, -90f, 90f);

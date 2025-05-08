@@ -111,6 +111,7 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer numCollisionsScrSpaceDepthCb;
     private ComputeBuffer numCollisionsVolStructureCb;
     private ComputeBuffer numCollisionsHybridCb;
+    private ComputeBuffer numCollisionsHybridVolCb;
 #endif
 
     // Start is called before the first frame update
@@ -135,6 +136,8 @@ public class ParticleSys : MonoBehaviour
 #endif
 
         //SetupParticleSystemData(1);
+        //VisualizeAllBvhNodes();
+        //enabled = false;
     }
 
     public void SetupParticleSystemData(int particleLayersY)
@@ -192,15 +195,6 @@ public class ParticleSys : MonoBehaviour
         particlesInitPosCB = null;
         particlesAliveTimeCB?.Release();
         particlesAliveTimeCB = null;
-
-#if ACCURACY_BENCHMARK
-        numCollisionsScrSpaceDepthCb?.Release();
-        numCollisionsScrSpaceDepthCb = null;
-        numCollisionsVolStructureCb?.Release();
-        numCollisionsVolStructureCb = null;
-        numCollisionsHybridCb?.Release();
-        numCollisionsHybridCb = null;
-#endif
 
         // Initialization of particles positions and velocities
         float xzStart = (float)(xzDimension - 1) / 2f;
@@ -291,15 +285,24 @@ public class ParticleSys : MonoBehaviour
         psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
 
 #if ACCURACY_BENCHMARK
-        List<int> numCollisionsZeroed = new(particlesPos.Count);
-        for (int i = 0; i < numCollisionsZeroed.Count; i++)
+        numCollisionsScrSpaceDepthCb?.Release();
+        numCollisionsScrSpaceDepthCb = null;
+        numCollisionsVolStructureCb?.Release();
+        numCollisionsVolStructureCb = null;
+        numCollisionsHybridCb?.Release();
+        numCollisionsHybridCb = null;
+        numCollisionsHybridVolCb?.Release();
+        numCollisionsHybridVolCb = null;
+
+        List<int> numCollisionsZeroed = new();
+        for (int i = 0; i < particlesPos.Count; i++)
         {
             numCollisionsZeroed.Add(0);
         }
 
         numCollisionsScrSpaceDepthCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsScrSpaceDepthCb.SetData(numCollisionsZeroed);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
+        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
 
         numCollisionsVolStructureCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsVolStructureCb.SetData(numCollisionsZeroed);
@@ -308,7 +311,10 @@ public class ParticleSys : MonoBehaviour
         numCollisionsHybridCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsHybridCb.SetData(numCollisionsZeroed);
         psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numCollisions", numCollisionsHybridCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+
+        numCollisionsHybridVolCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        numCollisionsHybridVolCb.SetData(numCollisionsZeroed);
+        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridVolCb);
 #endif
     }
 
@@ -318,7 +324,7 @@ public class ParticleSys : MonoBehaviour
         if (normalTexture) normalTexture.Release();
 
         // Depth buffer for depth pre-pass setting
-        depthTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.RFloat);
+        depthTexture = new RenderTexture(Screen.width, Screen.height, 1, RenderTextureFormat.RFloat);
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         depthTexture.Create();
 
@@ -326,7 +332,7 @@ public class ParticleSys : MonoBehaviour
         psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetcHybrid, "depthTexture", depthTexture);
 
         // Normal buffer for normal pre-pass setting
-        normalTexture = new RenderTexture(Screen.width, Screen.height, 32, RenderTextureFormat.ARGBFloat);
+        normalTexture = new RenderTexture(Screen.width, Screen.height, 1, RenderTextureFormat.ARGBFloat);
         normalTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         normalTexture.Create();
 
@@ -482,6 +488,8 @@ public class ParticleSys : MonoBehaviour
         numCollisionsVolStructureCb = null;
         numCollisionsHybridCb?.Release();
         numCollisionsHybridCb = null;
+        numCollisionsHybridVolCb?.Release();
+        numCollisionsHybridVolCb = null;
 #endif
     }
 
@@ -606,7 +614,8 @@ public class ParticleSys : MonoBehaviour
         return new() {
             "Screen Space Collision Detection",
             "Volume Structure Collision Detection",
-            "Hybrid Collision Detection",
+            "Hybrid Depth Collision Detection",
+            "Hybrid Volume Collision Detection"
         };
     }
 
@@ -637,17 +646,21 @@ public class ParticleSys : MonoBehaviour
         numCollisionsVolStructureCb?.GetData(numCollisionsVolStructure);
         int[] numCollisionsHybrid = new int[particlesPos.Count];
         numCollisionsHybridCb?.GetData(numCollisionsHybrid);
+        int[] numCollisionsHybridVol = new int[particlesPos.Count];
+        numCollisionsHybridVolCb?.GetData(numCollisionsHybridVol);
 
         return new() { 
             numCollisionsScrSpaceDepth, 
             numCollisionsVolStructure, 
-            numCollisionsHybrid };
+            numCollisionsHybrid,
+            numCollisionsHybridVol
+        };
     }
 
     public void ResetBenchmarkCollisons()
     {
         List<int> numCollisionsZeroed = new(particlesPos.Count);
-        for (int i = 0; i < numCollisionsZeroed.Count; i++)
+        for (int i = 0; i < particlesPos.Count; i++)
         {
             numCollisionsZeroed.Add(0);
         }
@@ -655,6 +668,7 @@ public class ParticleSys : MonoBehaviour
         numCollisionsScrSpaceDepthCb?.SetData(numCollisionsZeroed);
         numCollisionsVolStructureCb?.SetData(numCollisionsZeroed);
         numCollisionsHybridCb?.SetData(numCollisionsZeroed);
+        numCollisionsHybridVolCb?.SetData(numCollisionsZeroed);
     }
 #endif
 
@@ -944,6 +958,7 @@ public class ParticleSys : MonoBehaviour
         // Iterate through each GameObject and get its MeshFilter component
         foreach (GameObject obj in allObjects)
         {
+            if (obj == null || obj == this.gameObject) continue;
             if (obj.TryGetComponent(out MeshFilter meshFilter))
             {
                 Mesh mesh = meshFilter.sharedMesh;
@@ -1163,6 +1178,20 @@ public class ParticleSys : MonoBehaviour
             UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.boundingSphere.center);
             PrintBvhNodes(2 * nodeIndex + 1, nodeLevel + 1);
             PrintBvhNodes(2 * nodeIndex + 2, nodeLevel + 1);
+        }
+    }
+
+    private void VisualizeAllBvhNodes()
+    {
+        int numNodes = bvh.Count;
+        sphericalBvhNodes.Capacity = numNodes;
+
+        for (int i = 0; i < numNodes; i++)
+        {
+            BvhSphereNode curNode = bvh[i];
+            sphericalBvhNodes.Add(Instantiate(sphericalNodePrefab));
+            sphericalBvhNodes.Last().transform.position = curNode.boundingSphere.center;
+            sphericalBvhNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
         }
     }
 

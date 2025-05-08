@@ -232,7 +232,7 @@ bool ParticleTriangleIntersection(float3 partInitPos, float3 partEndPos, float3 
 }
 
 void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
-{         
+{    
     uint threadId = id.x;
     uint stackBase = threadId * maxStackSize;
     
@@ -305,18 +305,19 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                         (collisionTri.vertices[1] - collisionTri.vertices[0]),
                         (collisionTri.vertices[2] - collisionTri.vertices[0])));
 
-                    if (dot(triNormal, partDir) > 0)
+                    if (dot(triNormal, partDir) > 0.0)
                         triNormal = -triNormal;
                     
                     float3 reflectedDir = normalize(reflect(partDir, triNormal));
                     float collisionToEndDist = length(partEndPos - collisionPoint);
                     
                     const float gravity = -9.81;
-                    particlesPos[particleIndex] = collisionPoint + reflectedDir * (collisionToEndDist * particleBounciness);
-                    particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) + float3(0, -1.01, 0) * (gravity * deltaTime);
+                    
+                    particlesPos[particleIndex] = collisionPoint - partDir * (0.005 * particleRadius) + reflectedDir * (collisionToEndDist * particleBounciness);
+                    particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) + float3(0, -1.0, 0) * (gravity * deltaTime);
                     
 #ifdef ACCURACY_BENCHMARK
-                    numCollisions[particleIndex]++;
+                    numCollisions[threadId]++;
 #endif
                     
                     break;

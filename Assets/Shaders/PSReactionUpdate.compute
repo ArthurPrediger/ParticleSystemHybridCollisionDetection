@@ -22,7 +22,7 @@ void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
     else
     {
         particlesAliveTime[id.x] = 0;
-        particlesVel[id.x] = 0.0;
+        particlesVel[id.x] = float3(0.0, 0.0, 0.0);
         particlesPos[id.x] = particlesInitPos[id.x];
     }
     

@@ -191,6 +191,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &35115597
 AudioListener:
   m_ObjectHideFlags: 0
@@ -1251,7 +1252,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &780729454
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1607,6 +1608,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &844604832
 AudioListener:
   m_ObjectHideFlags: 0
@@ -1817,6 +1819,12 @@ MonoBehaviour:
   NormalPrePassShader: {fileID: 4800000, guid: 641011e9799c406469057f29990eb720, type: 3}
   instancedParticlesMat: {fileID: 2100000, guid: 89bf4ae66bc8c514f9fac6aafc8583cd, type: 2}
   particleMesh: {fileID: 4711208715938537054, guid: 5c754e657054ba047b26dfa7bf92c8ba, type: 3}
+  particleRadius: 2
+  particlesLifetimeSteps: 2001
+  numParticlesXZ: 128
+  particlesOffsetXZ: 4
+  deltaTime: 0.01
+  particleBounciness: 0.25
   textureImage: {fileID: 780729455}
   sphericalNodePrefab: {fileID: 5209843910144339430, guid: efb45e3b99903f041a4a3e4f40865e55, type: 3}
 --- !u!23 &888686343
@@ -1883,9 +1891,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameras:
   - {fileID: 963194225}
-  - {fileID: 1968700531}
-  - {fileID: 35115595}
-  - {fileID: 1797849250}
   runBenchButton: {fileID: 1684804115}
   quitButton: {fileID: 747968173}
   loadingBenchText: {fileID: 294919275}
@@ -2001,6 +2006,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!1 &1229967816
 GameObject:
   m_ObjectHideFlags: 0
@@ -2219,6 +2225,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &1409388586
 AudioListener:
   m_ObjectHideFlags: 0
@@ -2565,6 +2572,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &1793704371
 AudioListener:
   m_ObjectHideFlags: 0
@@ -2672,6 +2680,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &1797849252
 AudioListener:
   m_ObjectHideFlags: 0
@@ -2779,6 +2788,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 128
   mouseSensitivity: 2048
+  movementEnabled: 0
 --- !u!81 &1968700533
 AudioListener:
   m_ObjectHideFlags: 0

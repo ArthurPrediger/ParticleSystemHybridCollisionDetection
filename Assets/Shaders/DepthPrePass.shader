@@ -1,3 +1,7 @@
+// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
+// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
 // Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
 
 Shader "Custom/DepthPrePass"
@@ -22,6 +26,7 @@ Shader "Custom/DepthPrePass"
             {
                 float4 pos : SV_POSITION;
                 float3 worldPos : TEXCOORD0;
+                //float3 viewPos : TEXCOORD0;
             };
 
             v2f vert(appdata v)
@@ -29,6 +34,7 @@ Shader "Custom/DepthPrePass"
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+                //o.viewPos = mul(UNITY_MATRIX_MV, v.vertex).xyz;
                 return o;
             }
 
@@ -36,6 +42,8 @@ Shader "Custom/DepthPrePass"
             {
                 float3 cameraPos = _WorldSpaceCameraPos;
                 float depth = length(i.worldPos - cameraPos);
+
+                //float depth = i.viewPos.z;
 
                 return depth;
             }
