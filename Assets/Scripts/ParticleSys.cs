@@ -92,9 +92,10 @@ public class ParticleSys : MonoBehaviour
     private bool isScreenSpaceCollisionActive = true;
     private bool isVolumeStructureCollisionActive = false;
 
-    GraphicsBuffer commandBuf;
-    GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
-    const int commandCount = 1;
+    private GraphicsBuffer commandBuf;
+    private GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
+    private RenderParams rp;
+    private const int commandCount = 1;
 
     private const float infinityFloatGpu = 1.0e38f;
 
@@ -157,6 +158,20 @@ public class ParticleSys : MonoBehaviour
         // CPU and GPU particle data buffers setup
         SetupParticleDependentData(xzDimension, particleLayersY);
 
+        // Initialization of data for mesh instancing rendering of the particles
+        commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
+        commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[commandCount];
+
+        rp = new RenderParams(instancedParticlesMat);
+        rp.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rp.worldBounds = new Bounds(Vector3.zero, 10000 * Vector3.one);
+        rp.matProps = new MaterialPropertyBlock();
+        rp.matProps.SetFloat("particleRadius", particleRadius);
+
+        commandData[0].indexCountPerInstance = particleMesh.GetIndexCount(0);
+        commandData[0].instanceCount = (uint)particlesPos.Count;
+        commandBuf.SetData(commandData);
+
         if (bvh.Count > 0) return;
 
         // Dispatch args gpu buffer setting
@@ -170,10 +185,6 @@ public class ParticleSys : MonoBehaviour
 
         // BVH building and gpu BVH buffers setting up
         BuildAndSetupBvh();
-
-        // Initialization of data for mesh instancing rendering of the particles
-        commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
-        commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[commandCount];
     }
 
     private void SetupParticleDependentData(int xzDimension, int yDimension)
@@ -437,15 +448,6 @@ public class ParticleSys : MonoBehaviour
         psReactionUpdateCs.Dispatch(kernelIdReactUpdate, threadGroupsX, 1, 1);
 
         // Particles mesh instancing rendering
-        RenderParams rp = new RenderParams(instancedParticlesMat);
-        rp.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-        rp.worldBounds = new Bounds(Vector3.zero, 10000 * Vector3.one);
-        rp.matProps = new MaterialPropertyBlock();
-        rp.matProps.SetFloat("particleRadius", particleRadius);
-
-        commandData[0].indexCountPerInstance = particleMesh.GetIndexCount(0);
-        commandData[0].instanceCount = (uint)particlesPos.Count;
-        commandBuf.SetData(commandData);
         Graphics.RenderMeshIndirect(rp, particleMesh, commandBuf, commandCount);
 
         if (Input.GetKeyDown(KeyCode.Alpha1))

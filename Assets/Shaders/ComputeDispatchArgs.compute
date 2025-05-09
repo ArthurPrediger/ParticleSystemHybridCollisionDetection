@@ -10,7 +10,9 @@ void ComputeDispatchArgs (uint3 id : SV_DispatchThreadID)
 {
     if (id.x == 0)
     {
-        dispatchArgs[0] = (numParticlesWithoutDepthCollision[0] + threadGroupSize - (numParticlesWithoutDepthCollision[0] % threadGroupSize)) / threadGroupSize;
+        int numOverAlignment = (numParticlesWithoutDepthCollision[0] % threadGroupSize);
+        numOverAlignment == 0 ? numOverAlignment = threadGroupSize : numOverAlignment;
+        dispatchArgs[0] = (numParticlesWithoutDepthCollision[0] + threadGroupSize - numOverAlignment) / threadGroupSize;
         dispatchArgs[1] = 1; // Y threads
         dispatchArgs[2] = 1; // Z threads
     }
