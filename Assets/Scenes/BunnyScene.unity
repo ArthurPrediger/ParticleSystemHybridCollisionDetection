@@ -1252,7 +1252,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &780729454
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1891,6 +1891,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameras:
   - {fileID: 963194225}
+  - {fileID: 1968700531}
+  - {fileID: 35115595}
+  - {fileID: 1797849250}
   runBenchButton: {fileID: 1684804115}
   quitButton: {fileID: 747968173}
   loadingBenchText: {fileID: 294919275}
