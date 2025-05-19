@@ -1,6 +1,6 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel PSVolumeStructureCollisionDetection
-#pragma kernel PSVolumeStructureCollisionDetectionHybrid
+#pragma kernel SpatialStructureCollisionDetection
+#pragma kernel SpatialStructureCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
 #define ACCURACY_BENCHMARK
@@ -28,6 +28,7 @@ RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 //ConsumeStructuredBuffer<int> particlesWithoutDepthCollision;
 RWStructuredBuffer<uint> particlesWithoutDepthCollision;
+float3 gravity;
 float particleRadius;
 float particleBounciness;
 float deltaTime;
@@ -270,12 +271,38 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                     bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
                     bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
                 }
+                //float3 collisionPointChild0;
+                //float3 collisionPointChild1;
+                //bool child0Intersected = ParticleSphereIntersection(partInitPos, partEndPos, partDir, child0, collisionPointChild0);
+                //bool child1Intersected = ParticleSphereIntersection(partInitPos, partEndPos, partDir, child1, collisionPointChild1);
+                
+                //if(child0Intersected && child1Intersected)
+                //{
+                //    float3 diffInitChild0 = partInitPos - collisionPointChild0;
+                //    float3 diffInitChild1 = partInitPos - collisionPointChild1;
+                    
+                //    if (dot(diffInitChild0, diffInitChild0) > dot(diffInitChild1, diffInitChild1))
+                //    {
+                //        bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                //        bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                //    }
+                //    else
+                //    {
+                //        bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                //        bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                //    }
+                //}
+                //else if (child0Intersected)
+                //{
+                //    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrStartNegated;
+                //}
+                //else if (child1Intersected)
+                //{
+                //    bvhStack[stackBase + bvhStackIndices[threadId]++] = node.childOrSize;
+                //}
             }
             else
             {   
-                float3 partEndPos = particlesPos[particleIndex] + particlesVel[particleIndex] * deltaTime;
-                float3 partVel = particlesVel[particleIndex];
-                
                 BvhTriangle collisionTri;
                 float3 collisionPoint = float3(1, 1, 1) * FLOAT_MAX;
                 bool collided = false;
@@ -311,10 +338,8 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                     float3 reflectedDir = normalize(reflect(partDir, triNormal));
                     float collisionToEndDist = length(partEndPos - collisionPoint);
                     
-                    const float gravity = -9.81;
-                    
-                    particlesPos[particleIndex] = collisionPoint - partDir * (0.005 * particleRadius) + reflectedDir * (collisionToEndDist * particleBounciness);
-                    particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) + float3(0, -1.0, 0) * (gravity * deltaTime);
+                    particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) - (gravity * deltaTime);
+                    particlesPos[particleIndex] = collisionPoint - partDir * (0.002 * particleRadius) + reflectedDir * (collisionToEndDist * particleBounciness);
                     
 #ifdef ACCURACY_BENCHMARK
                     numCollisions[threadId]++;
@@ -328,13 +353,13 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
 }
 
 [numthreads(32, 1, 1)]
-void PSVolumeStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
+void SpatialStructureCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
     TraverseVolumeStructureForCollisionDetection(id.x, id);
 }
 
 [numthreads(32, 1, 1)]
-void PSVolumeStructureCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
+void SpatialStructureCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 {
     //int particleIndex = particlesWithoutDepthCollision.Consume();
     int particleIndex = particlesWithoutDepthCollision[id.x];

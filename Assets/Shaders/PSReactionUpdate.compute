@@ -6,6 +6,7 @@ RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
 RWStructuredBuffer<uint> particlesAliveTime;
 //RWStructuredBuffer<float> particlesLifeSpan;
+float3 gravity;
 float deltaTime;
 uint particlesLifetimeSteps;
 
@@ -13,10 +14,8 @@ uint particlesLifetimeSteps;
 void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
 {
     if (particlesAliveTime[id.x] < particlesLifetimeSteps)
-    {
-        const float gravity = -9.81;
-        
-        particlesVel[id.x] += float3(0, 1, 0) * (gravity * deltaTime);
+    {        
+        particlesVel[id.x] += (gravity * deltaTime);
         particlesPos[id.x] += particlesVel[id.x] * deltaTime;
     }
     else

@@ -15,13 +15,13 @@ public class ParticleSys : MonoBehaviour
     private ComputeShader psReactionUpdateCs;
     private int kernelIdReactUpdate;
     [SerializeField]
-    private ComputeShader psScreenSpaceCollisionDetectionCs;
-    private int kernelIdScrSpaceColDetc;
-    private int kernelIdScrSpaceColDetcHybrid;
+    private ComputeShader screenSpaceDepthCollisionDetectionCs;
+    private int kernelIdScrSpcDepthColDetc;
+    private int kernelIdScrSpcDepthColDetcHybrid;
     [SerializeField]
-    private ComputeShader psVolumeStructureCollisionDetectionCs;
-    private int kernelIdVolStructColDetc;
-    private int kernelIdVolStructColDetcHybrid;
+    private ComputeShader spatialStructureCollisionDetectionCs;
+    private int kernelIdSptStructColDetc;
+    private int kernelIdSptStructColDetcHybrid;
     [SerializeField]
     private ComputeShader computeDispatchArgsCs;
     private int kernelIdCompDispArgs;
@@ -95,6 +95,7 @@ public class ParticleSys : MonoBehaviour
     private const int commandCount = 1;
 
     private const float infinityFloatGpu = 1.0e38f;
+    private Vector3 gravity = new(0f, -9.81f, 0f);
 
     private Vector2Int lastScreenSize = new();
 
@@ -146,10 +147,10 @@ public class ParticleSys : MonoBehaviour
 
         // Compute buffer IDs setting
         kernelIdReactUpdate = psReactionUpdateCs.FindKernel("PSReactionUpdate");
-        kernelIdScrSpaceColDetc = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetection");
-        kernelIdScrSpaceColDetcHybrid = psScreenSpaceCollisionDetectionCs.FindKernel("PSScreenSpaceCollisionDetectionHybrid");
-        kernelIdVolStructColDetc = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetection");
-        kernelIdVolStructColDetcHybrid = psVolumeStructureCollisionDetectionCs.FindKernel("PSVolumeStructureCollisionDetectionHybrid");
+        kernelIdScrSpcDepthColDetc = screenSpaceDepthCollisionDetectionCs.FindKernel("ScreenSpaceDepthCollisionDetection");
+        kernelIdScrSpcDepthColDetcHybrid = screenSpaceDepthCollisionDetectionCs.FindKernel("ScreenSpaceDepthCollisionDetectionHybrid");
+        kernelIdSptStructColDetc = spatialStructureCollisionDetectionCs.FindKernel("SpatialStructureCollisionDetection");
+        kernelIdSptStructColDetcHybrid = spatialStructureCollisionDetectionCs.FindKernel("SpatialStructureCollisionDetectionHybrid");
         kernelIdCompDispArgs = computeDispatchArgsCs.FindKernel("ComputeDispatchArgs");
 
         // CPU and GPU particle data buffers setup
@@ -162,7 +163,7 @@ public class ParticleSys : MonoBehaviour
         uint[] zero = new uint[1] { 0 };
         numParticlesWithoutDepthCollisionCb.SetData(zero);
 
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetcHybrid, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
         computeDispatchArgsCs.SetBuffer(kernelIdCompDispArgs, "numParticlesWithoutDepthCollision", numParticlesWithoutDepthCollisionCb);
 
         // Dispatch args gpu buffer setting
@@ -242,10 +243,10 @@ public class ParticleSys : MonoBehaviour
 
         instancedParticlesMat.SetBuffer("particlesPos", particlesPosCb);
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesPos", particlesPosCb);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesPos", particlesPosCb);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "particlesPos", particlesPosCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesPos", particlesPosCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "particlesPos", particlesPosCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetc, "particlesPos", particlesPosCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetcHybrid, "particlesPos", particlesPosCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "particlesPos", particlesPosCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "particlesPos", particlesPosCb);
 
         // Particles Initial Positions gpu buffer setting
         particlesInitPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
@@ -264,10 +265,10 @@ public class ParticleSys : MonoBehaviour
         particlesVelCb.SetData(particlesVel);
 
         psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesVel", particlesVelCb);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "particlesVel", particlesVelCb);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "particlesVel", particlesVelCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "particlesVel", particlesVelCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "particlesVel", particlesVelCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetc, "particlesVel", particlesVelCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetcHybrid, "particlesVel", particlesVelCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "particlesVel", particlesVelCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "particlesVel", particlesVelCb);
 
         // Particles without screen space collision detection gpu buffer setting
         particlesWithoutDepthCollisionCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
@@ -276,20 +277,20 @@ public class ParticleSys : MonoBehaviour
             zeros[i] = 0;
         particlesWithoutDepthCollisionCb.SetData(zeros);
 
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetcHybrid, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "particlesWithoutDepthCollision", particlesWithoutDepthCollisionCb);
 
         // Stack for bvh nodes gpu buffer setting
         bvhStackCb = new ComputeBuffer(particlesPos.Count * bvhStackSizePerThread, sizeof(int), ComputeBufferType.Structured);
 
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStack", bvhStackCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStack", bvhStackCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "bvhStack", bvhStackCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "bvhStack", bvhStackCb);
 
         // Stack indices of each thread gpu buffer setting
         bvhStackIndicesCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
 
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "bvhStackIndices", bvhStackIndicesCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "bvhStackIndices", bvhStackIndicesCb);
 
         // Initialization of data for mesh instancing rendering of the particles
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, commandCount, GraphicsBuffer.IndirectDrawIndexedArgs.size);
@@ -323,16 +324,16 @@ public class ParticleSys : MonoBehaviour
 
         numCollisionsScrSpaceDepthCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsScrSpaceDepthCb.SetData(numCollisionsZeroed);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
 
         numCollisionsVolStructureCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsVolStructureCb.SetData(numCollisionsZeroed);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "numCollisions", numCollisionsVolStructureCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "numCollisions", numCollisionsVolStructureCb);
 
         numCollisionsHybridCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsHybridCb.SetData(numCollisionsZeroed);
-        psScreenSpaceCollisionDetectionCs.SetBuffer(kernelIdScrSpaceColDetcHybrid, "numCollisions", numCollisionsHybridCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+        screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetcHybrid, "numCollisions", numCollisionsHybridCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "numCollisions", numCollisionsHybridCb);
 
         //numCollisionsHybridVolCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         //numCollisionsHybridVolCb.SetData(numCollisionsZeroed);
@@ -350,16 +351,16 @@ public class ParticleSys : MonoBehaviour
         depthTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         depthTexture.Create();
 
-        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetc, "depthTexture", depthTexture);
-        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetcHybrid, "depthTexture", depthTexture);
+        screenSpaceDepthCollisionDetectionCs.SetTexture(kernelIdScrSpcDepthColDetc, "depthTexture", depthTexture);
+        screenSpaceDepthCollisionDetectionCs.SetTexture(kernelIdScrSpcDepthColDetcHybrid, "depthTexture", depthTexture);
 
         // Normal buffer for normal pre-pass setting
         normalTexture = new RenderTexture(Screen.width, Screen.height, 1, RenderTextureFormat.ARGBFloat);
         normalTexture.enableRandomWrite = true;  // Enable random write for compute shader access
         normalTexture.Create();
 
-        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetc, "normalTexture", normalTexture);
-        psScreenSpaceCollisionDetectionCs.SetTexture(kernelIdScrSpaceColDetcHybrid, "normalTexture", normalTexture);
+        screenSpaceDepthCollisionDetectionCs.SetTexture(kernelIdScrSpcDepthColDetc, "normalTexture", normalTexture);
+        screenSpaceDepthCollisionDetectionCs.SetTexture(kernelIdScrSpcDepthColDetcHybrid, "normalTexture", normalTexture);
     }
 
     private void BuildAndSetupBvh()
@@ -397,8 +398,8 @@ public class ParticleSys : MonoBehaviour
 
         bvhCb.SetData(bvhGpu);
 
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvh", bvhCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvh", bvhCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "bvh", bvhCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "bvh", bvhCb);
 
         // BVH triangles gpu buffer setting
         bvhTrianglesCb = new ComputeBuffer(triangles.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhTriangleGpu)), ComputeBufferType.Structured);
@@ -413,8 +414,8 @@ public class ParticleSys : MonoBehaviour
 
         bvhTrianglesCb.SetData(trianglesGpu);
 
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetc, "bvhTriangles", bvhTrianglesCb);
-        psVolumeStructureCollisionDetectionCs.SetBuffer(kernelIdVolStructColDetcHybrid, "bvhTriangles", bvhTrianglesCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "bvhTriangles", bvhTrianglesCb);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "bvhTriangles", bvhTrianglesCb);
     }
 
     // Update is called once per frame
@@ -423,7 +424,7 @@ public class ParticleSys : MonoBehaviour
         // Screen Space Particle Collision setting and dispatch
         if (IsScreenSpaceCollisionActive())
         {
-            RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetc);
+            RunScreenSpaceCollisionDetection(kernelIdScrSpcDepthColDetc);
 #if PERFORMANCE_BENCHMARK
             benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
 #endif
@@ -448,8 +449,9 @@ public class ParticleSys : MonoBehaviour
         }
 
         // Particle System reaction update setting and dispatch
-        psReactionUpdateCs.SetInt("particlesLifetimeSteps", particlesLifetimeSteps);
+        psReactionUpdateCs.SetVector("gravity", gravity);
         psReactionUpdateCs.SetFloat("deltaTime", deltaTime);
+        psReactionUpdateCs.SetInt("particlesLifetimeSteps", particlesLifetimeSteps);
         psReactionUpdateCs.Dispatch(kernelIdReactUpdate, threadGroupsX, 1, 1);
 
         // Particles mesh instancing rendering
@@ -521,48 +523,49 @@ public class ParticleSys : MonoBehaviour
         NormalPrePass();
         //textureImage.texture = depthTexture;
 
-        psScreenSpaceCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
-        psScreenSpaceCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
-        psScreenSpaceCollisionDetectionCs.SetMatrix("inverseProjectionMat", Camera.main.projectionMatrix.inverse);
-        psScreenSpaceCollisionDetectionCs.SetMatrix("inverseViewMat", Camera.main.worldToCameraMatrix.inverse);
-        psScreenSpaceCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
-        psScreenSpaceCollisionDetectionCs.SetVector("cameraForward", Camera.main.transform.forward);
-        psScreenSpaceCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psScreenSpaceCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
-        psScreenSpaceCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
+        screenSpaceDepthCollisionDetectionCs.SetMatrix("projectionMat", Camera.main.projectionMatrix);
+        screenSpaceDepthCollisionDetectionCs.SetMatrix("viewMat", Camera.main.worldToCameraMatrix);
+        screenSpaceDepthCollisionDetectionCs.SetVector("cameraPos", Camera.main.transform.position);
+        screenSpaceDepthCollisionDetectionCs.SetVector("cameraForward", Camera.main.transform.forward);
+        screenSpaceDepthCollisionDetectionCs.SetVector("gravity", gravity);
+        screenSpaceDepthCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        screenSpaceDepthCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
+        screenSpaceDepthCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
 
         Vector2 screenRes = new(Screen.width, Screen.height);
-        psScreenSpaceCollisionDetectionCs.SetVector("screenSize", screenRes);
+        screenSpaceDepthCollisionDetectionCs.SetVector("screenSize", screenRes);
 
-        psScreenSpaceCollisionDetectionCs.Dispatch(kernelId, threadGroupsX, 1, 1);
+        screenSpaceDepthCollisionDetectionCs.Dispatch(kernelId, threadGroupsX, 1, 1);
     }
 
     void RunVolumeStructureCollisionDetection()
     {
-        psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psVolumeStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
-        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
-        psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
+        spatialStructureCollisionDetectionCs.SetVector("gravity", gravity);
+        spatialStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        spatialStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
+        spatialStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
+        spatialStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
-        psVolumeStructureCollisionDetectionCs.Dispatch(kernelIdVolStructColDetc, threadGroupsX, 1, 1);
+        spatialStructureCollisionDetectionCs.Dispatch(kernelIdSptStructColDetc, threadGroupsX, 1, 1);
     }
 
     void RunHybridCollisionDetection()
     {
         // Screen Space Particle Collision setting and dispatch
-        RunScreenSpaceCollisionDetection(kernelIdScrSpaceColDetcHybrid);
+        RunScreenSpaceCollisionDetection(kernelIdScrSpcDepthColDetcHybrid);
 
         //Finding the number of particles that do not complete a thread group
         computeDispatchArgsCs.SetInt("threadGroupSize", threadGroupSize);
         computeDispatchArgsCs.Dispatch(kernelIdCompDispArgs, 1, 1, 1);
 
         // Volumes Structure Particle Collision setting and dispatch
-        psVolumeStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
-        psVolumeStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
-        psVolumeStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
-        psVolumeStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
+        spatialStructureCollisionDetectionCs.SetVector("gravity", gravity);
+        spatialStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
+        spatialStructureCollisionDetectionCs.SetFloat("particleBounciness", particleBounciness);
+        spatialStructureCollisionDetectionCs.SetFloat("deltaTime", deltaTime);
+        spatialStructureCollisionDetectionCs.SetInt("maxStackSize", bvhStackSizePerThread);
 
-        psVolumeStructureCollisionDetectionCs.DispatchIndirect(kernelIdVolStructColDetcHybrid, argsBufferCb, 0);
+        spatialStructureCollisionDetectionCs.DispatchIndirect(kernelIdSptStructColDetcHybrid, argsBufferCb, 0);
     }
 
     void DepthPrePass()
