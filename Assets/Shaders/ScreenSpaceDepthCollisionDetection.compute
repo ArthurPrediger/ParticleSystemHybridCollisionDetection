@@ -3,7 +3,7 @@
 #pragma kernel ScreenSpaceDepthCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;

@@ -3,7 +3,7 @@
 #pragma kernel SpatialStructureCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 #define FLOAT_MAX 1.0e38
 

@@ -1,5 +1,5 @@
-//#define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+#define PERFORMANCE_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections;
@@ -27,6 +27,10 @@ public class BenchmarkManager : MonoBehaviour
     private int curCollisionDetectionMethod = 0;
     
     private bool isBenchmarkRunning = false;
+
+    [SerializeField]
+    private int numBenchmarkRuns = 10;
+    private int curBenchRun = 0;
 
     [SerializeField]
     private Button runBenchButton;
@@ -101,12 +105,17 @@ public class BenchmarkManager : MonoBehaviour
                     quitButton.gameObject.SetActive(true);
                     numParticlesBenchText.enabled = true;
                     numParticlesBenchScroll.gameObject.SetActive(true);
+                    resultsBenchText.enabled = true;
 
 #if PERFORMANCE_BENCHMARK
                     ComputePresentPerformanceResults();
 #elif ACCURACY_BENCHMARK
                     ComputePresentAccuracyResults();
 #endif
+                    if (++curBenchRun < numBenchmarkRuns)
+                    {
+                        StartBenchmark();
+                    };
                 }
             }
 
@@ -189,7 +198,7 @@ public class BenchmarkManager : MonoBehaviour
         var benchmarkTimings = particleSys.GetBenchmarkTimings();
 
         string filePath = Application.streamingAssetsPath + "/results.csv";
-        StreamWriter writer = new StreamWriter(filePath);
+        StreamWriter writer = new StreamWriter(filePath, curBenchRun != 0);
 
         int j = 0;
         foreach (var benchTiming in benchmarkTimings)
@@ -208,14 +217,13 @@ public class BenchmarkManager : MonoBehaviour
                 writer.WriteLine($"{i};{benchTiming[i]}");
             }
 
-            writer.WriteLine($"Average;{runningAverage}");
+            //writer.WriteLine($"Average;{runningAverage}");
 
             resultsBenchText.text += collisionDetectionMethodsNames[j] + ": " + runningAverage.ToString("F4") + "ms\n";
             j++;
         }
 
         writer.Close();
-        resultsBenchText.enabled = true;
     }
 #endif
 
@@ -227,7 +235,7 @@ public class BenchmarkManager : MonoBehaviour
         var benchmarkCollisons = particleSys.GetBenchmarkCollisions();
 
         string filePath = Application.streamingAssetsPath + "/results.csv";
-        StreamWriter writer = new StreamWriter(filePath);
+        StreamWriter writer = new StreamWriter(filePath, curBenchRun != 0);
 
         int j = 0;
         foreach (var benchCollisons in benchmarkCollisons)
@@ -242,14 +250,13 @@ public class BenchmarkManager : MonoBehaviour
                 writer.WriteLine($"{i};{benchCollisons[i]}");
             }
 
-            writer.WriteLine($"Total collisions;{totalCollisons}");
+            //writer.WriteLine($"Total collisions;{totalCollisons}");
 
             resultsBenchText.text += collisionDetectionMethodsNames[j] + ": " + totalCollisons.ToString() + " collisions\n";
             j++;
         }
 
         writer.Close();
-        resultsBenchText.enabled = true;
     }
 #endif
 
