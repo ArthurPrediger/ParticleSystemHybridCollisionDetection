@@ -1,9 +1,9 @@
 Shader "Unlit/SphericalBVHNode"
 {
-    Properties
-    {
-        _Color ("Color", Color) = (0,1,0,1)
-    }
+    // Properties
+    // {
+    //     _Color ("Color", Color) = (0,1,0,1)
+    // }
     SubShader
     {
         Tags { "Queue"="AlphaTest" "RenderType"="TransparentCutout" }
@@ -17,6 +17,8 @@ Shader "Unlit/SphericalBVHNode"
 
             #include "UnityCG.cginc"
 
+            fixed4 _Color;
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -29,7 +31,16 @@ Shader "Unlit/SphericalBVHNode"
                 float3 worldPos : TEXCOORD0;
                 float3 worldNormal : TEXCOORD1;
                 float3 cameraPos : TEXCOORD2;
+                float3 objectScale : TEXCOORD3;
             };
+
+            float3 ObjectScale() 
+            {
+                return float3(
+                    length(unity_ObjectToWorld._m00_m10_m20),
+                    length(unity_ObjectToWorld._m01_m11_m21),
+                    length(unity_ObjectToWorld._m02_m12_m22));
+            }
 
             v2f vert (appdata v)
             {
@@ -38,6 +49,7 @@ Shader "Unlit/SphericalBVHNode"
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.worldNormal = mul((float3x3)unity_ObjectToWorld, v.normal);
                 o.cameraPos = _WorldSpaceCameraPos;
+                o.objectScale = ObjectScale();
                 return o;
             }
 
@@ -47,13 +59,15 @@ Shader "Unlit/SphericalBVHNode"
                 float3 worldNormal = normalize(i.worldNormal);
                 float3 cameraDir = normalize(i.cameraPos - worldPos);
 
-                if((1 - abs(dot(worldNormal, cameraDir))) < 0.75)
+                // Get sphere's approximate radius
+                float sphereRadius = length(unity_ObjectToWorld._m00_m10_m20);
+
+                if (pow(1.2 - abs(dot(worldNormal, cameraDir)), 8) < 0.8 * (sphereRadius / 400.0))
                 {
                     discard;
                 }
 
-                fixed4 col = float4(0, 1, 0, 1);
-                return col;
+                return _Color;
             }
             ENDCG
         }

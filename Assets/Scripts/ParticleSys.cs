@@ -68,8 +68,8 @@ public class ParticleSys : MonoBehaviour
     private List<BvhTriangle> triangles = new();
 
     private List<BvhSphereNode> bvh = new();
-    //private const int numLevelsBVHMorton = 14;
-    //private const int maxLevelBvh = 16;
+    //private const int numLevelsBVHMorton = 1;
+    //private const int maxLevelBvh = 3;
     private const int numLevelsBVHMorton = 6;
     private const int maxLevelBvh = 16;
     private const int maxTrisPerBvhNode = 32;
@@ -1196,6 +1196,16 @@ public class ParticleSys : MonoBehaviour
             sphericalBvhNodes.Add(Instantiate(sphericalNodePrefab));
             sphericalBvhNodes.Last().transform.position = curNode.boundingSphere.center;
             sphericalBvhNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
+
+            Renderer renderer = sphericalBvhNodes.Last().GetComponent<Renderer>();
+            MaterialPropertyBlock propertyBlock = new();
+            if (curNode.IsLeafNode()) 
+                propertyBlock.SetColor("_Color", Color.blue);
+            else if(i == 0)
+                propertyBlock.SetColor("_Color", Color.red);
+            else
+                propertyBlock.SetColor("_Color", Color.green);
+            renderer.SetPropertyBlock(propertyBlock);
         }
     }
 
