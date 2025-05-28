@@ -19,8 +19,6 @@ public class BenchmarkManager : MonoBehaviour
     private List<GameObject> cameras = new();
 
     private int indexCurActiveCamera = 0;
-    private int cameraActiveTimeSteps = 0;
-    private float cameraActiveLifetimeSteps;
 
     private List<string> collisionDetectionMethods;
     private List<string> collisionDetectionMethodsNames;
@@ -63,14 +61,13 @@ public class BenchmarkManager : MonoBehaviour
 
         cameras.First().SetActive(true);
 
-        cameraActiveLifetimeSteps = GetComponent<ParticleSys>().particlesLifetimeSteps;
-
         loadingBenchText.enabled = false;
         resultsBenchText.enabled = false;
         activeColDetecMethodText.enabled = false;
         frameTimeText.enabled = true;
 
         particleSys = GetComponent<ParticleSys>();
+        particleSys.Run(false);
 
         SetNumParticlesBenchmark(0f);
     }
@@ -82,7 +79,7 @@ public class BenchmarkManager : MonoBehaviour
 
         if (!isBenchmarkRunning) return;
 
-        if(cameraActiveTimeSteps++ >= cameraActiveLifetimeSteps)
+        if(!particleSys.IsRunning())
         {
             cameras[indexCurActiveCamera++].SetActive(false);
 
@@ -99,7 +96,6 @@ public class BenchmarkManager : MonoBehaviour
                 {
                     curCollisionDetectionMethod = 0;
                     isBenchmarkRunning = false;
-                    particleSys.enabled = false;
                     activeColDetecMethodText.enabled = false;
                     runBenchButton.gameObject.SetActive(true);
                     quitButton.gameObject.SetActive(true);
@@ -120,10 +116,8 @@ public class BenchmarkManager : MonoBehaviour
             }
 
             cameras[indexCurActiveCamera].SetActive(true);
-            cameraActiveTimeSteps = 0;
 
             isBenchmarkRunning = false;
-            particleSys.enabled = false;
             StartCoroutine(WaitCameraChange());
         }
     }
@@ -135,12 +129,12 @@ public class BenchmarkManager : MonoBehaviour
 
     IEnumerator WaitCameraChange()
     {
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(2f);
 
         if (!resultsBenchText.enabled)
         {
             isBenchmarkRunning = true;
-            particleSys.enabled = true;
+            particleSys.Run(true);
         }
     }
 
@@ -179,7 +173,7 @@ public class BenchmarkManager : MonoBehaviour
 
         int yLayers = (1 << curScrollbarStep);
         particleSys.SetupParticleSystemData(yLayers);
-        particleSys.enabled = true;
+        particleSys.Run(true);
         loadingBenchText.enabled = false;
         activeColDetecMethodText.enabled = true;
         isBenchmarkRunning = true;

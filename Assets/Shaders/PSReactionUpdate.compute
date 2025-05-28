@@ -1,10 +1,10 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PSReactionUpdate
 
-StructuredBuffer<float3> particlesInitPos;
+//StructuredBuffer<float3> particlesInitPos;
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
-RWStructuredBuffer<uint> particlesAliveTime;
+//RWStructuredBuffer<uint> particlesAliveTime;
 //RWStructuredBuffer<float> particlesLifeSpan;
 float3 gravity;
 float deltaTime;
@@ -13,17 +13,17 @@ uint particlesLifetimeSteps;
 [numthreads(32,1,1)]
 void PSReactionUpdate (uint3 id : SV_DispatchThreadID)
 {
-    if (particlesAliveTime[id.x] < particlesLifetimeSteps)
+    //if (particlesAliveTime[id.x] < particlesLifetimeSteps)
     {        
         particlesVel[id.x] += (gravity * deltaTime);
         particlesPos[id.x] += particlesVel[id.x] * deltaTime;
     }
-    else
-    {
-        particlesAliveTime[id.x] = 0;
-        particlesVel[id.x] = float3(0.0, 0.0, 0.0);
-        particlesPos[id.x] = particlesInitPos[id.x];
-    }
+    //else
+    //{
+    //    particlesAliveTime[id.x] = 0;
+    //    particlesVel[id.x] = float3(0.0, 0.0, 0.0);
+    //    particlesPos[id.x] = particlesInitPos[id.x];
+    //}
     
-    particlesAliveTime[id.x]++;
+    //particlesAliveTime[id.x]++;
 }

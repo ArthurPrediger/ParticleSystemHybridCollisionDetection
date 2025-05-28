@@ -37,6 +37,7 @@ public class ParticleSys : MonoBehaviour
     private Mesh particleMesh;
     public float particleRadius = 2f;
     public int particlesLifetimeSteps = 2001;
+    private int curTimeStep = 0;
     public int numParticlesXZ = 128;
     public float particlesOffsetXZ = 4f;
     public float deltaTime = 0.01f;
@@ -112,6 +113,8 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer numCollisionsHybridCb;
     //private ComputeBuffer numCollisionsHybridVolCb;
 #endif
+
+    private bool isRunning = false;
 
     // Start is called before the first frame update
     void Start()
@@ -248,17 +251,17 @@ public class ParticleSys : MonoBehaviour
         spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "particlesPos", particlesPosCb);
         spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetcHybrid, "particlesPos", particlesPosCb);
 
-        // Particles Initial Positions gpu buffer setting
-        particlesInitPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
-        particlesInitPosCB.SetData(particlesPos);
+        //// Particles Initial Positions gpu buffer setting
+        //particlesInitPosCB = new ComputeBuffer(particlesPos.Count, sizeof(float) * 3, ComputeBufferType.Structured);
+        //particlesInitPosCB.SetData(particlesPos);
 
-        psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesInitPos", particlesInitPosCB);
+        //psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesInitPos", particlesInitPosCB);
 
-        // Particles Alive Time gpu buffer setting
-        particlesAliveTimeCB = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
-        particlesAliveTimeCB.SetData(particlesAliveTime);
+        //// Particles Alive Time gpu buffer setting
+        //particlesAliveTimeCB = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        //particlesAliveTimeCB.SetData(particlesAliveTime);
 
-        psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesAliveTime", particlesAliveTimeCB);
+        //psReactionUpdateCs.SetBuffer(kernelIdReactUpdate, "particlesAliveTime", particlesAliveTimeCB);
 
         // Particles Velocities gpu buffer setting
         particlesVelCb = new ComputeBuffer(particlesVel.Count, sizeof(float) * 3, ComputeBufferType.Structured);
@@ -465,6 +468,14 @@ public class ParticleSys : MonoBehaviour
         {
             isVolumeStructureCollisionActive = !isVolumeStructureCollisionActive;
         }
+
+        if(++curTimeStep >= particlesLifetimeSteps)
+        {
+            curTimeStep = 0;
+            particlesPosCb.SetData(particlesPos);
+            particlesVelCb.SetData(particlesVel);
+            Run(false);
+        }
     }
 
     void OnDestroy()
@@ -507,6 +518,17 @@ public class ParticleSys : MonoBehaviour
         //numCollisionsHybridVolCb?.Release();
         //numCollisionsHybridVolCb = null;
 #endif
+    }
+
+    public void Run(bool setRunning)
+    {
+        isRunning = setRunning;
+        enabled = setRunning;
+    }
+
+    public bool IsRunning()
+    {
+        return isRunning;
     }
 
     void RunScreenSpaceCollisionDetection(int kernelId)
@@ -630,9 +652,9 @@ public class ParticleSys : MonoBehaviour
     public List<string> GetCollisionDetectionMethodsNames()
     {
         return new() {
-            "Screen Space Collision Detection",
-            "Volume Structure Collision Detection",
-            "Hybrid Depth Collision Detection",
+            "Screen Space Depth Collision Detection",
+            "Spatial Structure Collision Detection",
+            "Hybrid Collision Detection",
             //"Hybrid Volume Collision Detection"
         };
     }
