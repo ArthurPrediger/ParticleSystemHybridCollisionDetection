@@ -3,7 +3,7 @@
 #pragma kernel SpatialStructureCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 #define FLOAT_MAX 1.0e38
 
@@ -339,7 +339,7 @@ void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
                     float collisionToEndDist = length(partEndPos - collisionPoint);
                     
                     particlesVel[particleIndex] = reflectedDir * (particleBounciness * length(partVel)) - (gravity * deltaTime);
-                    particlesPos[particleIndex] = collisionPoint - partDir * (0.002 * particleRadius) + reflectedDir * (collisionToEndDist * particleBounciness);
+                    particlesPos[particleIndex] = collisionPoint - partDir * (0.0015 * particleRadius) + reflectedDir * (collisionToEndDist * particleBounciness);
                     
 #ifdef ACCURACY_BENCHMARK
                     numCollisions[threadId]++;

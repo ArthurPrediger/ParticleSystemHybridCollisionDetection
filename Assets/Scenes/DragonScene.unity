@@ -434,8 +434,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -650, y: 495}
-  m_SizeDelta: {x: 600, y: 50}
+  m_AnchoredPosition: {x: -592, y: 495}
+  m_SizeDelta: {x: 700, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &104391392
 MonoBehaviour:
@@ -1822,6 +1822,7 @@ MonoBehaviour:
   deltaTime: 0.01
   particleBounciness: 0.25
   textureImage: {fileID: 780729455}
+  maxLevelBvh: 25
   sphericalNodePrefab: {fileID: 5209843910144339430, guid: efb45e3b99903f041a4a3e4f40865e55, type: 3}
 --- !u!23 &888686343
 MeshRenderer:
@@ -1888,6 +1889,9 @@ MonoBehaviour:
   cameras:
   - {fileID: 963194225}
   - {fileID: 1968700531}
+  - {fileID: 35115595}
+  - {fileID: 1797849250}
+  numBenchmarkRuns: 11
   runBenchButton: {fileID: 1684804115}
   quitButton: {fileID: 747968173}
   loadingBenchText: {fileID: 294919275}

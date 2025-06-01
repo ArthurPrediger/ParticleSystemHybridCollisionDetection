@@ -1,5 +1,5 @@
 #define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections.Generic;
@@ -72,8 +72,9 @@ public class ParticleSys : MonoBehaviour
     //private const int numLevelsBVHMorton = 1;
     //private const int maxLevelBvh = 3;
     private const int numLevelsBVHMorton = 6;
-    private const int maxLevelBvh = 16;
-    private const int maxTrisPerBvhNode = 32;
+    public int maxLevelBvh = 20; // For bunny
+    //public int maxLevelBvh = 25; // For dragon
+    private const int maxTrisPerBvhNode = 16;
     private int numLastLevelBvh = 0;
     private const int maxSahSamples = 64;
 
@@ -88,7 +89,7 @@ public class ParticleSys : MonoBehaviour
     int threadGroupsX;
 
     private bool isScreenSpaceCollisionActive = true;
-    private bool isVolumeStructureCollisionActive = false;
+    private bool isSpatialStructureCollisionActive = false;
 
     private GraphicsBuffer commandBuf;
     private GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
@@ -103,13 +104,13 @@ public class ParticleSys : MonoBehaviour
     //private Stopwatch benchmarkSw = new();
 #if PERFORMANCE_BENCHMARK
     private List<float> benchmarkTimingsScrSpace;
-    private List<float> benchmarkTimingsVolStrc;
+    private List<float> benchmarkTimingsSptStrc;
     private List<float> benchmarkTimingsHybrid;
 #endif
 
 #if ACCURACY_BENCHMARK
     private ComputeBuffer numCollisionsScrSpaceDepthCb;
-    private ComputeBuffer numCollisionsVolStructureCb;
+    private ComputeBuffer numCollisionsSptStructureCb;
     private ComputeBuffer numCollisionsHybridCb;
     //private ComputeBuffer numCollisionsHybridVolCb;
 #endif
@@ -132,7 +133,7 @@ public class ParticleSys : MonoBehaviour
         {
             int benchTimingsCount = particlesLifetimeSteps * bm.GetCamerasCount();
             benchmarkTimingsScrSpace = new(benchTimingsCount);
-            benchmarkTimingsVolStrc = new(benchTimingsCount);
+            benchmarkTimingsSptStrc = new(benchTimingsCount);
             benchmarkTimingsHybrid = new(benchTimingsCount);
         }
 #endif
@@ -312,8 +313,8 @@ public class ParticleSys : MonoBehaviour
 #if ACCURACY_BENCHMARK
         numCollisionsScrSpaceDepthCb?.Release();
         numCollisionsScrSpaceDepthCb = null;
-        numCollisionsVolStructureCb?.Release();
-        numCollisionsVolStructureCb = null;
+        numCollisionsSptStructureCb?.Release();
+        numCollisionsSptStructureCb = null;
         numCollisionsHybridCb?.Release();
         numCollisionsHybridCb = null;
         //numCollisionsHybridVolCb?.Release();
@@ -329,9 +330,9 @@ public class ParticleSys : MonoBehaviour
         numCollisionsScrSpaceDepthCb.SetData(numCollisionsZeroed);
         screenSpaceDepthCollisionDetectionCs.SetBuffer(kernelIdScrSpcDepthColDetc, "numCollisions", numCollisionsScrSpaceDepthCb);
 
-        numCollisionsVolStructureCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
-        numCollisionsVolStructureCb.SetData(numCollisionsZeroed);
-        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "numCollisions", numCollisionsVolStructureCb);
+        numCollisionsSptStructureCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
+        numCollisionsSptStructureCb.SetData(numCollisionsZeroed);
+        spatialStructureCollisionDetectionCs.SetBuffer(kernelIdSptStructColDetc, "numCollisions", numCollisionsSptStructureCb);
 
         numCollisionsHybridCb = new ComputeBuffer(particlesPos.Count, sizeof(int), ComputeBufferType.Structured);
         numCollisionsHybridCb.SetData(numCollisionsZeroed);
@@ -382,7 +383,13 @@ public class ParticleSys : MonoBehaviour
         UnityEngine.Debug.Log("Time to build BVH with " + (numLastLevelBvh + 1) + " levels: " + sw0.Elapsed.TotalSeconds + " seconds");
         UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBvh - numLevelsBVHMorton + 1) + " levels: " + sw1.Elapsed.TotalSeconds + " seconds");
         PrintBvhNodes();
+        UnityEngine.Debug.Log("Nodes with tris over max: ");
+        foreach(int overMax in numOverMax)
+        {
+            UnityEngine.Debug.Log(overMax);
+        }
         UnityEngine.Debug.Log("Triangles after SAH: " + trisAfterSAH);
+        UnityEngine.Debug.Log("Bvh size in bytes: " + (bvh.Count * System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu))).ToString());
 
         // BVH structure gpu buffer setting
         bvhCb = new ComputeBuffer(bvh.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu)), ComputeBufferType.Structured);
@@ -434,11 +441,11 @@ public class ParticleSys : MonoBehaviour
         }
 
         // Volumes Structure Particle Collision setting and dispatch
-        if (IsVolumeStructureCollisionActive())
+        if (IsSpatialStructureCollisionActive())
         {
-            RunVolumeStructureCollisionDetection();
+            RunSpatialStructureCollisionDetection();
 #if PERFORMANCE_BENCHMARK
-            benchmarkTimingsVolStrc.Add(Time.deltaTime * 1000f);
+            benchmarkTimingsSptStrc.Add(Time.deltaTime * 1000f);
 #endif
         }
 
@@ -466,7 +473,7 @@ public class ParticleSys : MonoBehaviour
         }
         if (Input.GetKeyDown(KeyCode.Alpha2))
         {
-            isVolumeStructureCollisionActive = !isVolumeStructureCollisionActive;
+            isSpatialStructureCollisionActive = !isSpatialStructureCollisionActive;
         }
 
         if(++curTimeStep >= particlesLifetimeSteps)
@@ -511,8 +518,8 @@ public class ParticleSys : MonoBehaviour
 #if ACCURACY_BENCHMARK
         numCollisionsScrSpaceDepthCb?.Release();
         numCollisionsScrSpaceDepthCb = null;
-        numCollisionsVolStructureCb?.Release();
-        numCollisionsVolStructureCb = null;
+        numCollisionsSptStructureCb?.Release();
+        numCollisionsSptStructureCb = null;
         numCollisionsHybridCb?.Release();
         numCollisionsHybridCb = null;
         //numCollisionsHybridVolCb?.Release();
@@ -560,7 +567,7 @@ public class ParticleSys : MonoBehaviour
         screenSpaceDepthCollisionDetectionCs.Dispatch(kernelId, threadGroupsX, 1, 1);
     }
 
-    void RunVolumeStructureCollisionDetection()
+    void RunSpatialStructureCollisionDetection()
     {
         spatialStructureCollisionDetectionCs.SetVector("gravity", gravity);
         spatialStructureCollisionDetectionCs.SetFloat("particleRadius", particleRadius);
@@ -619,43 +626,43 @@ public class ParticleSys : MonoBehaviour
     public void SetScreenSpaceCollisionActive()
     {
         isScreenSpaceCollisionActive = true;
-        isVolumeStructureCollisionActive = false;
+        isSpatialStructureCollisionActive = false;
     }
 
     public bool IsScreenSpaceCollisionActive()
     {
-        return isScreenSpaceCollisionActive && !isVolumeStructureCollisionActive;
+        return isScreenSpaceCollisionActive && !isSpatialStructureCollisionActive;
     }
 
-    public void SetVolumeStructureCollisionActive()
+    public void SetSpatialStructureCollisionActive()
     {
         isScreenSpaceCollisionActive = false;
-        isVolumeStructureCollisionActive = true;
+        isSpatialStructureCollisionActive = true;
     }
 
-    public bool IsVolumeStructureCollisionActive()
+    public bool IsSpatialStructureCollisionActive()
     {
-        return !isScreenSpaceCollisionActive && isVolumeStructureCollisionActive;
+        return !isScreenSpaceCollisionActive && isSpatialStructureCollisionActive;
     }
 
     public void SetHybridCollisionActive()
     {
         isScreenSpaceCollisionActive = true;
-        isVolumeStructureCollisionActive = true;
+        isSpatialStructureCollisionActive = true;
     }
 
     public bool IsHybridCollisionActive()
     {
-        return isScreenSpaceCollisionActive && isVolumeStructureCollisionActive;
+        return isScreenSpaceCollisionActive && isSpatialStructureCollisionActive;
     }
 
     public List<string> GetCollisionDetectionMethodsNames()
     {
         return new() {
             "Screen Space Depth Collision Detection",
-            "Spatial Structure Collision Detection",
+            "Spatial Data Structure Collision Detection",
             "Hybrid Collision Detection",
-            //"Hybrid Volume Collision Detection"
+            //"Hybrid Spatial Collision Detection"
         };
     }
 
@@ -664,7 +671,7 @@ public class ParticleSys : MonoBehaviour
     {
         return new() {
             benchmarkTimingsScrSpace,
-            benchmarkTimingsVolStrc,
+            benchmarkTimingsSptStrc,
             benchmarkTimingsHybrid,
         };
     }
@@ -672,7 +679,7 @@ public class ParticleSys : MonoBehaviour
     public void ResetBenchmarkTimings()
     {
         benchmarkTimingsScrSpace?.Clear();
-        benchmarkTimingsVolStrc?.Clear();
+        benchmarkTimingsSptStrc?.Clear();
         benchmarkTimingsHybrid?.Clear();
     }
 #endif
@@ -682,8 +689,8 @@ public class ParticleSys : MonoBehaviour
     {
         int[] numCollisionsScrSpaceDepth = new int[particlesPos.Count];
         numCollisionsScrSpaceDepthCb?.GetData(numCollisionsScrSpaceDepth);
-        int[] numCollisionsVolStructure = new int[particlesPos.Count];
-        numCollisionsVolStructureCb?.GetData(numCollisionsVolStructure);
+        int[] numCollisionsSptStructure = new int[particlesPos.Count];
+        numCollisionsSptStructureCb?.GetData(numCollisionsSptStructure);
         int[] numCollisionsHybrid = new int[particlesPos.Count];
         numCollisionsHybridCb?.GetData(numCollisionsHybrid);
         //int[] numCollisionsHybridVol = new int[particlesPos.Count];
@@ -691,7 +698,7 @@ public class ParticleSys : MonoBehaviour
 
         return new() { 
             numCollisionsScrSpaceDepth, 
-            numCollisionsVolStructure, 
+            numCollisionsSptStructure, 
             numCollisionsHybrid,
             //numCollisionsHybridVol
         };
@@ -706,7 +713,7 @@ public class ParticleSys : MonoBehaviour
         }
 
         numCollisionsScrSpaceDepthCb?.SetData(numCollisionsZeroed);
-        numCollisionsVolStructureCb?.SetData(numCollisionsZeroed);
+        numCollisionsSptStructureCb?.SetData(numCollisionsZeroed);
         numCollisionsHybridCb?.SetData(numCollisionsZeroed);
         //numCollisionsHybridVolCb?.SetData(numCollisionsZeroed);
     }
@@ -1069,13 +1076,13 @@ public class ParticleSys : MonoBehaviour
 
                         for (int i = 0; i < maxSahSamples - 1; i++)
                         {
-                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * bucketSize), bucketSize-1);
+                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0f, 1f) * bucketSize), bucketSize-1);
                             trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt((bucketSize * i) + randomOffset));
                         }
                         {
                             int startIndexLastBucket = bucketSize * (maxSahSamples - 1);
                             int lastBucketSize = curNode.TrisCount() - startIndexLastBucket;
-                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0, 1f) * lastBucketSize), lastBucketSize - 1);
+                            int randomOffset = Mathf.Max(Mathf.FloorToInt(UnityEngine.Random.Range(0f, 1f) * lastBucketSize), lastBucketSize - 1);
                             trisSamples.Add(curNode.FirstTriIndex() + Mathf.FloorToInt(randomOffset + startIndexLastBucket));
                         }
                     }
@@ -1180,6 +1187,7 @@ public class ParticleSys : MonoBehaviour
     }
 
     private int trisAfterSAH = 0;
+    private List<int> numOverMax = new();
 
     private void PrintBvhNodes(int nodeIndex = 0, int nodeLevel = 0)
     {
@@ -1198,6 +1206,10 @@ public class ParticleSys : MonoBehaviour
         {
             UnityEngine.Debug.Log(offset + nodeLevel + ". Center: " + curNode.boundingSphere.center + " Tris: " + curNode.TrisCount());
             trisAfterSAH += curNode.TrisCount();
+            if(curNode.TrisCount() > maxTrisPerBvhNode)
+            {
+                numOverMax.Add(curNode.TrisCount());
+            }
         }
         else
         {

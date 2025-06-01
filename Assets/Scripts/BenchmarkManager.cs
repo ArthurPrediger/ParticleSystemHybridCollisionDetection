@@ -1,15 +1,15 @@
 #define PERFORMANCE_BENCHMARK
-//#define ACCURACY_BENCHMARK
+#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class BenchmarkManager : MonoBehaviour
 {
@@ -23,7 +23,7 @@ public class BenchmarkManager : MonoBehaviour
     private List<string> collisionDetectionMethods;
     private List<string> collisionDetectionMethodsNames;
     private int curCollisionDetectionMethod = 0;
-    
+
     private bool isBenchmarkRunning = false;
 
     [SerializeField]
@@ -79,7 +79,7 @@ public class BenchmarkManager : MonoBehaviour
 
         if (!isBenchmarkRunning) return;
 
-        if(!particleSys.IsRunning())
+        if (!particleSys.IsRunning())
         {
             cameras[indexCurActiveCamera++].SetActive(false);
 
@@ -105,13 +105,18 @@ public class BenchmarkManager : MonoBehaviour
 
 #if PERFORMANCE_BENCHMARK
                     ComputePresentPerformanceResults();
-#elif ACCURACY_BENCHMARK
+#endif
+#if ACCURACY_BENCHMARK
                     ComputePresentAccuracyResults();
 #endif
                     if (++curBenchRun < numBenchmarkRuns)
                     {
                         StartBenchmark();
-                    };
+                    }
+                    else
+                    {
+                        curBenchRun = 0;
+                    }
                 }
             }
 
@@ -150,14 +155,15 @@ public class BenchmarkManager : MonoBehaviour
 
 #if PERFORMANCE_BENCHMARK
         particleSys.ResetBenchmarkTimings();
-#elif ACCURACY_BENCHMARK
+#endif
+#if ACCURACY_BENCHMARK
         particleSys.ResetBenchmarkCollisons();
 #endif
         StartCoroutine(RunParticleSystemSetup());
 
         collisionDetectionMethods = new() {
             "SetScreenSpaceCollisionActive",
-            "SetVolumeStructureCollisionActive",
+            "SetSpatialStructureCollisionActive",
             "SetHybridCollisionActive",
         };
 
@@ -191,7 +197,14 @@ public class BenchmarkManager : MonoBehaviour
 
         var benchmarkTimings = particleSys.GetBenchmarkTimings();
 
-        string filePath = Application.streamingAssetsPath + "/results.csv";
+        string directoryPath = Application.dataPath + "/BenchmarkResults";
+        if (!Directory.Exists(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        string fileName = "/results_perf_" + SceneManager.GetActiveScene().name + "_" + GetNumParticlesBenchmark().ToString() + ".csv";
+        string filePath = directoryPath + fileName;
         StreamWriter writer = new StreamWriter(filePath, curBenchRun != 0);
 
         int j = 0;
@@ -199,7 +212,7 @@ public class BenchmarkManager : MonoBehaviour
         {
             writer.WriteLine($"{collisionDetectionMethodsNames[j]};ms");
 
-            for(int i = cameras.Count - 1; i >= 0; i--)
+            for (int i = cameras.Count - 1; i >= 0; i--)
             {
                 benchTiming.RemoveAt(particleSys.particlesLifetimeSteps * i);
             }
@@ -228,7 +241,14 @@ public class BenchmarkManager : MonoBehaviour
 
         var benchmarkCollisons = particleSys.GetBenchmarkCollisions();
 
-        string filePath = Application.streamingAssetsPath + "/results.csv";
+        string directoryPath = Application.dataPath + "/BenchmarkResults";
+        if (!Directory.Exists(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        string fileName = "/results_acc_" + SceneManager.GetActiveScene().name + "_" + GetNumParticlesBenchmark().ToString() + ".csv";
+        string filePath = directoryPath + fileName;
         StreamWriter writer = new StreamWriter(filePath, curBenchRun != 0);
 
         int j = 0;
@@ -258,6 +278,11 @@ public class BenchmarkManager : MonoBehaviour
     {
         curScrollbarStep = Mathf.FloorToInt(Mathf.Max((single - 0.0001f), 0f) * (float)numParticlesBenchScroll.numberOfSteps);
 
-        numParticlesBenchText.text = "Number of Particles " + Mathf.Min((particleSys.numParticlesXZ * particleSys.numParticlesXZ * (1 << curScrollbarStep)), 65535 * 32).ToString();
+        numParticlesBenchText.text = "Number of Particles " + GetNumParticlesBenchmark().ToString();
+    }
+
+    private int GetNumParticlesBenchmark()
+    {
+        return Mathf.Min((particleSys.numParticlesXZ * particleSys.numParticlesXZ * (1 << curScrollbarStep)), 65535 * 32);
     }
 }
