@@ -498,6 +498,7 @@ MonoBehaviour:
   deltaTime: 0.01
   particleBounciness: 0.25
   textureImage: {fileID: 780729455}
+  maxLevelBvh: 25
   sphericalNodePrefab: {fileID: 5209843910144339430, guid: efb45e3b99903f041a4a3e4f40865e55, type: 3}
 --- !u!23 &888686343
 MeshRenderer:
