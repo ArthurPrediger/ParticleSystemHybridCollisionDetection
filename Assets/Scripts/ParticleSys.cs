@@ -1,5 +1,6 @@
 #define PERFORMANCE_BENCHMARK
 #define ACCURACY_BENCHMARK
+//#define ACCURACY_VISUALIZATION
 
 using System;
 using System.Collections.Generic;
@@ -7,7 +8,9 @@ using System.Diagnostics;
 using System.Linq;
 using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System.IO;
 
 public class ParticleSys : MonoBehaviour
 {
@@ -88,7 +91,7 @@ public class ParticleSys : MonoBehaviour
     private const int bvhStackSizePerThread = 128;
     int threadGroupsX;
 
-    private bool isScreenSpaceCollisionActive = true;
+    private bool isScreenSpaceDepthCollisionActive = true;
     private bool isSpatialStructureCollisionActive = false;
 
     private GraphicsBuffer commandBuf;
@@ -113,6 +116,16 @@ public class ParticleSys : MonoBehaviour
     private ComputeBuffer numCollisionsSptStructureCb;
     private ComputeBuffer numCollisionsHybridCb;
     //private ComputeBuffer numCollisionsHybridVolCb;
+#endif
+
+#if ACCURACY_VISUALIZATION
+    [SerializeField]
+    private List<Camera> accVisualizationCameras = new();
+    private int curActiveAccVisualizationCamera = 0;
+    private int stepToVisualize = 1800;
+    [SerializeField]
+    private Camera benchmarkCamera = null;
+    private bool[] methodsActiveStatus = new bool[2] { false, false };
 #endif
 
     private bool isRunning = false;
@@ -382,12 +395,12 @@ public class ParticleSys : MonoBehaviour
         sw0.Stop();
         UnityEngine.Debug.Log("Time to build BVH with " + (numLastLevelBvh + 1) + " levels: " + sw0.Elapsed.TotalSeconds + " seconds");
         UnityEngine.Debug.Log("Time to compute SAH for " + (numLastLevelBvh - numLevelsBVHMorton + 1) + " levels: " + sw1.Elapsed.TotalSeconds + " seconds");
-        PrintBvhNodes();
-        UnityEngine.Debug.Log("Nodes with tris over max: ");
-        foreach(int overMax in numOverMax)
-        {
-            UnityEngine.Debug.Log(overMax);
-        }
+        //PrintBvhNodes();
+        //UnityEngine.Debug.Log("Nodes with tris over max: ");
+        //foreach(int overMax in numOverMax)
+        //{
+        //    UnityEngine.Debug.Log(overMax);
+        //}
         UnityEngine.Debug.Log("Triangles after SAH: " + trisAfterSAH);
         UnityEngine.Debug.Log("Bvh size in bytes: " + (bvh.Count * System.Runtime.InteropServices.Marshal.SizeOf(typeof(BvhSphereNodeGpu))).ToString());
 
@@ -461,22 +474,45 @@ public class ParticleSys : MonoBehaviour
         // Particle System reaction update setting and dispatch
         psReactionUpdateCs.SetVector("gravity", gravity);
         psReactionUpdateCs.SetFloat("deltaTime", deltaTime);
+#if ACCURACY_VISUALIZATION
+        if (curTimeStep == stepToVisualize)
+        {
+            psReactionUpdateCs.SetFloat("deltaTime", 0.0f);
+        }
+#endif
         psReactionUpdateCs.SetInt("particlesLifetimeSteps", particlesLifetimeSteps);
         psReactionUpdateCs.Dispatch(kernelIdReactUpdate, threadGroupsX, 1, 1);
 
         // Particles mesh instancing rendering
         Graphics.RenderMeshIndirect(rp, particleMesh, commandBuf, commandCount);
 
-        if (Input.GetKeyDown(KeyCode.Alpha1))
-        {
-            isScreenSpaceCollisionActive = !isScreenSpaceCollisionActive;
-        }
-        if (Input.GetKeyDown(KeyCode.Alpha2))
-        {
-            isSpatialStructureCollisionActive = !isSpatialStructureCollisionActive;
-        }
+        //if (Input.GetKeyDown(KeyCode.Alpha1))
+        //{
+        //    isScreenSpaceCollisionActive = !isScreenSpaceCollisionActive;
+        //}
+        //if (Input.GetKeyDown(KeyCode.Alpha2))
+        //{
+        //    isSpatialStructureCollisionActive = !isSpatialStructureCollisionActive;
+        //}
 
-        if(++curTimeStep >= particlesLifetimeSteps)
+#if ACCURACY_VISUALIZATION
+        if (curTimeStep == stepToVisualize)
+        {
+            benchmarkCamera.gameObject.SetActive(false);
+            accVisualizationCameras[curActiveAccVisualizationCamera].gameObject.SetActive(true);
+            if(!methodsActiveStatus[0] && !methodsActiveStatus[1])
+            {            
+                methodsActiveStatus[0] = isScreenSpaceDepthCollisionActive;
+                methodsActiveStatus[1] = isSpatialStructureCollisionActive;
+                isScreenSpaceDepthCollisionActive = false;
+                isSpatialStructureCollisionActive = false;
+            }
+            HandleAccuracyVisualizationInputs();
+            curTimeStep--;
+        }
+#endif
+
+        if (++curTimeStep >= particlesLifetimeSteps)
         {
             curTimeStep = 0;
             particlesPosCb.SetData(particlesPos);
@@ -625,35 +661,35 @@ public class ParticleSys : MonoBehaviour
 
     public void SetScreenSpaceCollisionActive()
     {
-        isScreenSpaceCollisionActive = true;
+        isScreenSpaceDepthCollisionActive = true;
         isSpatialStructureCollisionActive = false;
     }
 
     public bool IsScreenSpaceCollisionActive()
     {
-        return isScreenSpaceCollisionActive && !isSpatialStructureCollisionActive;
+        return isScreenSpaceDepthCollisionActive && !isSpatialStructureCollisionActive;
     }
 
     public void SetSpatialStructureCollisionActive()
     {
-        isScreenSpaceCollisionActive = false;
+        isScreenSpaceDepthCollisionActive = false;
         isSpatialStructureCollisionActive = true;
     }
 
     public bool IsSpatialStructureCollisionActive()
     {
-        return !isScreenSpaceCollisionActive && isSpatialStructureCollisionActive;
+        return !isScreenSpaceDepthCollisionActive && isSpatialStructureCollisionActive;
     }
 
     public void SetHybridCollisionActive()
     {
-        isScreenSpaceCollisionActive = true;
+        isScreenSpaceDepthCollisionActive = true;
         isSpatialStructureCollisionActive = true;
     }
 
     public bool IsHybridCollisionActive()
     {
-        return isScreenSpaceCollisionActive && isSpatialStructureCollisionActive;
+        return isScreenSpaceDepthCollisionActive && isSpatialStructureCollisionActive;
     }
 
     public List<string> GetCollisionDetectionMethodsNames()
@@ -716,6 +752,76 @@ public class ParticleSys : MonoBehaviour
         numCollisionsSptStructureCb?.SetData(numCollisionsZeroed);
         numCollisionsHybridCb?.SetData(numCollisionsZeroed);
         //numCollisionsHybridVolCb?.SetData(numCollisionsZeroed);
+    }
+#endif
+
+#if ACCURACY_VISUALIZATION
+    void HandleAccuracyVisualizationInputs()
+    {
+        // Check if should stop accuracy visualization
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            curTimeStep++;
+            accVisualizationCameras[curActiveAccVisualizationCamera].gameObject.SetActive(false);
+            benchmarkCamera.gameObject.SetActive(true);
+            isScreenSpaceDepthCollisionActive = methodsActiveStatus[0];
+            isSpatialStructureCollisionActive = methodsActiveStatus[1];
+            methodsActiveStatus[0] = false;
+            methodsActiveStatus[1] = false;
+        }
+        // Check if should switch to next camera
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            accVisualizationCameras[curActiveAccVisualizationCamera].gameObject.SetActive(false);
+            curActiveAccVisualizationCamera = (curActiveAccVisualizationCamera + 1) % accVisualizationCameras.Count;
+            accVisualizationCameras[curActiveAccVisualizationCamera].gameObject.SetActive(true);
+        }
+        // Check if should save accuracy screen shot image
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            SaveScreenShotAccVisualizationTexture(accVisualizationCameras[curActiveAccVisualizationCamera]);
+        }
+    }
+
+    void SaveScreenShotAccVisualizationTexture(Camera cam)
+    {
+        // Create a RenderTexture with the desired resolution
+        RenderTexture rt = new RenderTexture(1920, 1080, 32);
+        cam.targetTexture = rt;
+        cam.Render();
+
+        // Convert RenderTexture to Texture2D
+        RenderTexture.active = rt;
+        Texture2D tex = new Texture2D(rt.width, rt.height, TextureFormat.ARGB32, false);
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        tex.Apply();
+        RenderTexture.active = null;
+
+        string directoryPath = Application.dataPath + "/BenchmarkResults";
+        if (!Directory.Exists(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        string activeMethodName = "";
+        List<string> methodsNames = GetCollisionDetectionMethodsNames();
+        if (methodsActiveStatus[0] && methodsActiveStatus[1]) activeMethodName = methodsNames[2].Replace(" ", "");
+        else if (methodsActiveStatus[0]) activeMethodName = methodsNames[0].Replace(" ", "");
+        else if (methodsActiveStatus[1]) activeMethodName = methodsNames[1].Replace(" ", "");
+
+        string fileName = "/" + cam.name + "_" + activeMethodName + ".png";
+        string filePath = directoryPath + fileName;
+
+        // Save as PNG
+        byte[] bytes = tex.EncodeToPNG();
+        System.IO.File.WriteAllBytes(filePath, bytes);
+        UnityEngine.Debug.Log("Saved high-resolution image to " + filePath);
+
+        // Cleanup
+        cam.targetTexture = null;
+        RenderTexture.active = null;
+        Destroy(rt);
+        Destroy(tex);
     }
 #endif
 
@@ -1060,6 +1166,11 @@ public class ParticleSys : MonoBehaviour
                 numLastLevelBvh = Mathf.Max(numLastLevelBvh, nodeLevel);
                 if (curNode.TrisCount() > maxTrisPerBVHNode && nodeLevel < maxLevelBvh)
                 {
+                    if (curNode.TrisCount() == 1477)
+                    {
+                        UnityEngine.Debug.Log("Node found");
+                    }
+
                     // Sample random triangle indices contained inside the current leaf node to evaluate SAH
                     List<int> trisSamples = new List<int>();
 
@@ -1110,6 +1221,8 @@ public class ParticleSys : MonoBehaviour
                     float splitPos = bestPos;
 
                     int partIndex = Partition(triangles, splitAxis, splitPos, curNode.FirstTriIndex(), curNode.TrisCount());
+                    //if (partIndex == curNode.FirstTriIndex() || (partIndex - curNode.FirstTriIndex() -1 >= curNode.TrisCount()))
+                    //    partIndex = curNode.FirstTriIndex() + Mathf.FloorToInt(curNode.TrisCount() * 0.5f);
 
                     int childIndex = 2 * nodeIndex + 1;
 
@@ -1209,6 +1322,15 @@ public class ParticleSys : MonoBehaviour
             if(curNode.TrisCount() > maxTrisPerBvhNode)
             {
                 numOverMax.Add(curNode.TrisCount());
+
+                //sphericalBvhNodes.Add(Instantiate(sphericalNodePrefab));
+                //sphericalBvhNodes.Last().transform.position = curNode.boundingSphere.center;
+                //sphericalBvhNodes.Last().transform.localScale = Vector3.one * (curNode.boundingSphere.radius * 2f);
+
+                //Renderer renderer = sphericalBvhNodes.Last().GetComponent<Renderer>();
+                //MaterialPropertyBlock propertyBlock = new();
+                //propertyBlock.SetColor("_Color", Color.blue);
+                //renderer.SetPropertyBlock(propertyBlock);
             }
         }
         else
