@@ -8,7 +8,10 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/BunnyScene.unity
     guid: 6636fbd5a67458c46b8de2305661d759
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/DragonScene.unity
     guid: 10d02ee8c26599749bab25b973f466ce
+  - enabled: 1
+    path: Assets/Scenes/DragonAccVisualizationScene.unity
+    guid: 8187c1031eea7fd419fd5a967963a2f3
   m_configObjects: {}

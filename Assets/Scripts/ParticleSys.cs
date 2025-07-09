@@ -122,7 +122,7 @@ public class ParticleSys : MonoBehaviour
     [SerializeField]
     private List<Camera> accVisualizationCameras = new();
     private int curActiveAccVisualizationCamera = 0;
-    private int stepToVisualize = 1800;
+    private List<int> stepsToVisualize = new List<int>() { 1600 };//{ 400, 800, 1200, 1600 };
     [SerializeField]
     private Camera benchmarkCamera = null;
     private bool[] methodsActiveStatus = new bool[2] { false, false };
@@ -475,7 +475,7 @@ public class ParticleSys : MonoBehaviour
         psReactionUpdateCs.SetVector("gravity", gravity);
         psReactionUpdateCs.SetFloat("deltaTime", deltaTime);
 #if ACCURACY_VISUALIZATION
-        if (curTimeStep == stepToVisualize)
+        if (stepsToVisualize.Contains(curTimeStep))
         {
             psReactionUpdateCs.SetFloat("deltaTime", 0.0f);
         }
@@ -496,12 +496,12 @@ public class ParticleSys : MonoBehaviour
         //}
 
 #if ACCURACY_VISUALIZATION
-        if (curTimeStep == stepToVisualize)
+        if (stepsToVisualize.Contains(curTimeStep))
         {
             benchmarkCamera.gameObject.SetActive(false);
             accVisualizationCameras[curActiveAccVisualizationCamera].gameObject.SetActive(true);
-            if(!methodsActiveStatus[0] && !methodsActiveStatus[1])
-            {            
+            if (!methodsActiveStatus[0] && !methodsActiveStatus[1])
+            {
                 methodsActiveStatus[0] = isScreenSpaceDepthCollisionActive;
                 methodsActiveStatus[1] = isSpatialStructureCollisionActive;
                 isScreenSpaceDepthCollisionActive = false;
@@ -809,7 +809,7 @@ public class ParticleSys : MonoBehaviour
         else if (methodsActiveStatus[0]) activeMethodName = methodsNames[0].Replace(" ", "");
         else if (methodsActiveStatus[1]) activeMethodName = methodsNames[1].Replace(" ", "");
 
-        string fileName = "/" + cam.name + "_" + activeMethodName + ".png";
+        string fileName = "/" + cam.name + "_" + activeMethodName + "_step_" + curTimeStep.ToString() + ".png";
         string filePath = directoryPath + fileName;
 
         // Save as PNG
