@@ -1,5 +1,5 @@
 #define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 //#define ACCURACY_VISUALIZATION
 
 using System;
@@ -444,6 +444,11 @@ public class ParticleSys : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if (!isRunning)
+        {
+            return;
+        }
+
         // Screen Space Particle Collision setting and dispatch
         if (IsScreenSpaceCollisionActive())
         {
@@ -566,7 +571,7 @@ public class ParticleSys : MonoBehaviour
     public void Run(bool setRunning)
     {
         isRunning = setRunning;
-        enabled = setRunning;
+        //enabled = setRunning;
     }
 
     public bool IsRunning()

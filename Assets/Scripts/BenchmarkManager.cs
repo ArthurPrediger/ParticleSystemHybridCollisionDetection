@@ -1,5 +1,5 @@
 #define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 using System;
 using System.Collections;
@@ -134,7 +134,7 @@ public class BenchmarkManager : MonoBehaviour
 
     IEnumerator WaitCameraChange()
     {
-        yield return new WaitForSeconds(2f);
+        yield return new WaitForSeconds(1f);
 
         if (!resultsBenchText.enabled)
         {

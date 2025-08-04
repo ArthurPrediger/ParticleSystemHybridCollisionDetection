@@ -3,7 +3,7 @@
 #pragma kernel SpatialStructureCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 #define FLOAT_MAX 1.0e38
 
@@ -233,7 +233,10 @@ bool ParticleTriangleIntersection(float3 partInitPos, float3 partEndPos, float3 
 }
 
 void TraverseVolumeStructureForCollisionDetection(uint particleIndex, uint3 id)
-{    
+{
+    if (dot(particlesVel[particleIndex], particlesVel[particleIndex]) == 0.0)
+        return;
+    
     uint threadId = id.x;
     uint stackBase = threadId * maxStackSize;
     

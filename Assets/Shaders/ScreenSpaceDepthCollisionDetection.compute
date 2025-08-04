@@ -3,7 +3,7 @@
 #pragma kernel ScreenSpaceDepthCollisionDetectionHybrid
 
 //#define PERFORMANCE_BENCHMARK
-#define ACCURACY_BENCHMARK
+//#define ACCURACY_BENCHMARK
 
 RWStructuredBuffer<float3> particlesPos;
 RWStructuredBuffer<float3> particlesVel;
@@ -30,6 +30,9 @@ RWTexture2D<float4> normalTexture;
 [numthreads(32, 1, 1)]
 void ScreenSpaceDepthCollisionDetection(uint3 id : SV_DispatchThreadID)
 {
+    if (dot(particlesVel[id.x], particlesVel[id.x]) == 0.0)
+        return;
+    
     float3 particlePos = particlesPos[id.x];
     float3 particleVel = particlesVel[id.x];
 
@@ -83,6 +86,9 @@ void AddParticleWithoutDepthCollision(int particleIndex)
 [numthreads(32, 1, 1)]
 void ScreenSpaceDepthCollisionDetectionHybrid(uint3 id : SV_DispatchThreadID)
 {
+    if (dot(particlesVel[id.x], particlesVel[id.x]) == 0.0)
+        return;
+    
     float3 particlePos = particlesPos[id.x];
     float3 particleVel = particlesVel[id.x];
 
