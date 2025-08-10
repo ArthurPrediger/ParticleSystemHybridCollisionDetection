@@ -134,7 +134,7 @@ public class BenchmarkManager : MonoBehaviour
 
     IEnumerator WaitCameraChange()
     {
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.25f);
 
         if (!resultsBenchText.enabled)
         {
@@ -212,10 +212,6 @@ public class BenchmarkManager : MonoBehaviour
         {
             writer.WriteLine($"{collisionDetectionMethodsNames[j]};ms");
 
-            for (int i = cameras.Count - 1; i >= 0; i--)
-            {
-                benchTiming.RemoveAt(particleSys.particlesLifetimeSteps * i);
-            }
             float runningAverage = 0;
             for (int i = 0; i < benchTiming.Count; i++)
             {

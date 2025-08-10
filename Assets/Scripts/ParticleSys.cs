@@ -75,8 +75,8 @@ public class ParticleSys : MonoBehaviour
     //private const int numLevelsBVHMorton = 1;
     //private const int maxLevelBvh = 3;
     private const int numLevelsBVHMorton = 6;
-    public int maxLevelBvh = 20; // For bunny
-    //public int maxLevelBvh = 25; // For dragon
+    //public int maxLevelBvh = 20; // For bunny
+    public int maxLevelBvh = 25; // For dragon
     private const int maxTrisPerBvhNode = 16;
     private int numLastLevelBvh = 0;
     private const int maxSahSamples = 64;
@@ -454,7 +454,7 @@ public class ParticleSys : MonoBehaviour
         {
             RunScreenSpaceCollisionDetection(kernelIdScrSpcDepthColDetc);
 #if PERFORMANCE_BENCHMARK
-            benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
+            if (curTimeStep > 0) benchmarkTimingsScrSpace.Add(Time.deltaTime * 1000f);
 #endif
         }
 
@@ -463,7 +463,7 @@ public class ParticleSys : MonoBehaviour
         {
             RunSpatialStructureCollisionDetection();
 #if PERFORMANCE_BENCHMARK
-            benchmarkTimingsSptStrc.Add(Time.deltaTime * 1000f);
+            if (curTimeStep > 0) benchmarkTimingsSptStrc.Add(Time.deltaTime * 1000f);
 #endif
         }
 
@@ -472,7 +472,7 @@ public class ParticleSys : MonoBehaviour
         {
             RunHybridCollisionDetection();
 #if PERFORMANCE_BENCHMARK
-            benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
+            if(curTimeStep > 0) benchmarkTimingsHybrid.Add(Time.deltaTime * 1000f);
 #endif
         }
 
